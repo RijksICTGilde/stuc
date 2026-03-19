@@ -2,7 +2,7 @@
 
 Patronen glad strijken over GitHub repos.
 
-`stuc` discovers matching files via `gh search code`, previews diffs, then clones repos, applies changes, and opens PRs. It works as a four-step pipeline: define a campaign, preview what would change, apply it, and track the resulting PRs.
+`stuc` discovers matching files via `gh search code`, previews diffs, then clones repos, applies changes, and opens PRs. It works as a four-step pipeline: define a campaign, preview what would change, apply it, and track the resulting PRs. Supports both regex find-and-replace and LLM-powered transformations via `claude`.
 
 <p align="center">
   <img src="docs/demo-status.svg" alt="stuc status output" width="700">
@@ -10,7 +10,7 @@ Patronen glad strijken over GitHub repos.
 
 ## Why?
 
-Maintaining dozens (or hundreds) of repos in a GitHub org means you regularly need to update the same pattern everywhere -- bumping a shared action version, renaming an import path, rotating a config value. Doing that by hand is tedious and error-prone. `stuc` turns it into a single command.
+Maintaining dozens (or hundreds) of repos in a GitHub org means you regularly need to update the same pattern everywhere -- bumping a shared action version, renaming an import path, rotating a config value. Doing that by hand is tedious and error-prone. `stuc` turns it into a single command. For changes that need context (refactoring, adding sections, applying guidelines), the LLM mode delegates transformation to `claude`.
 
 ## Installation
 
@@ -31,6 +31,8 @@ uv run stuc --help
 ```
 
 ## Quick start
+
+### Regex mode (default)
 
 ```bash
 # 1. Create a campaign
@@ -53,6 +55,29 @@ stuc apply bump-actions
 stuc status bump-actions --refresh
 ```
 
+### LLM mode
+
+When a change needs context-awareness rather than a fixed pattern, use `--mode llm` with a prompt instead of regex:
+
+```bash
+stuc init add-license \
+  --mode llm \
+  --org MyOrg \
+  --file-glob "*.md" \
+  --search-term "README" \
+  --prompt "Add a EUPL-1.2 license section at the end of the file" \
+  --branch "stuc/add-license" \
+  --commit-msg "docs: add license section" \
+  --pr-title "Add license section to README"
+
+stuc plan add-license    # preview LLM-generated diffs
+stuc apply add-license   # apply and open PRs
+```
+
+Optional flags for LLM mode:
+- `--context-file <path>` -- include a reference document (style guide, spec) in the LLM prompt
+- `--validation <cmd>` -- shell command to validate each transformed file during `apply`
+
 ## Commands
 
 | Command | What it does |
@@ -60,7 +85,7 @@ stuc status bump-actions --refresh
 | `stuc init <name> ...` | Create a campaign definition (saved to `~/.stuc/campaigns/<name>.yml`) |
 | `stuc list` | List all campaigns |
 | `stuc plan <name>` | Preview matching files and diffs without making changes |
-| `stuc apply <name>` | Clone repos, apply the regex, push branches, open PRs |
+| `stuc apply <name>` | Clone repos, apply changes, push branches, open PRs |
 | `stuc apply <name> --dry-run` | Show what `apply` would do without touching anything |
 | `stuc apply <name> --auto-merge` | Apply and enable auto-merge on created PRs |
 | `stuc status <name> --refresh` | Fetch current PR state and CI results |
@@ -69,13 +94,15 @@ stuc status bump-actions --refresh
 
 ## How it works
 
-1. **init** saves a campaign definition as YAML in `~/.stuc/campaigns/`. The definition includes the regex pattern, replacement, target orgs, file glob, and PR metadata.
+1. **init** saves a campaign definition as YAML in `~/.stuc/campaigns/`. In regex mode the definition includes the find/replace pattern; in LLM mode it stores the prompt and search term. Both modes share target orgs, file glob, and PR metadata.
 
-2. **plan** uses `gh search code` to find files matching the pattern across the target orgs, fetches their content via the GitHub API, applies the regex, and shows a colored diff. Nothing is modified.
+2. **plan** uses `gh search code` to find files across the target orgs, fetches their content via the GitHub API, applies the transformation (regex or LLM), and shows a colored diff. Nothing is modified.
 
-3. **apply** re-discovers matching files, clones each affected repo into a temp directory, creates a branch, applies the substitution, commits, pushes, and opens a PR. Repos that already have an open PR on the campaign branch are skipped. PR URLs are saved back to the campaign file.
+3. **apply** re-discovers matching files, clones each affected repo into a temp directory, creates a branch, applies the transformation, commits, pushes, and opens a PR. Repos that already have an open PR on the campaign branch are skipped. PR URLs are saved back to the campaign file.
 
 4. **status** queries GitHub for the state of every PR in the campaign: open/merged/closed, CI check results, and merge status. With `--auto-merge`, it enables squash auto-merge on PRs where all checks pass.
+
+LLM mode calls `claude -p` for each file, so `plan` is slower than regex mode. The output is non-deterministic: diffs at plan time show the direction of the change, but `apply` may produce slightly different results. Review the plan carefully before applying.
 
 ## Regex patterns
 
@@ -111,6 +138,7 @@ stuc init my-campaign \
 - [GitHub CLI](https://cli.github.com/) installed and authenticated (`gh auth status`)
 - Push access to target repos (for creating branches and PRs)
 - Python 3.11+
+- For LLM mode: the [`claude` CLI](https://claude.ai/code)
 
 ## Development
 
