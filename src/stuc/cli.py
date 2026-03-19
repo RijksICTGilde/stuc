@@ -15,7 +15,7 @@ workflow:
   4. stuc status <name>      Check PR state and CI status across all repos
 
 examples:
-  # Migrate a GitHub Actions reference from v1 to v2 across an org
+  # Regex mode: Migrate a GitHub Actions reference from v1 to v2
   stuc init bump-actions \\
     --org MyOrg \\
     --file-glob ".github/workflows/*.yml" \\
@@ -24,6 +24,17 @@ examples:
     --branch "stuc/bump-actions" \\
     --commit-msg "chore: bump my-action to v2" \\
     --pr-title "Bump my-action to v2"
+
+  # LLM mode: Use claude to transform files
+  stuc init add-license \\
+    --mode llm \\
+    --org MyOrg \\
+    --file-glob "*.md" \\
+    --search-term "README" \\
+    --prompt "Add a license section at the end of the file" \\
+    --branch "stuc/add-license" \\
+    --commit-msg "docs: add license section" \\
+    --pr-title "Add license section to README"
 
   # Preview what the campaign would change
   stuc plan bump-actions
@@ -43,6 +54,7 @@ examples:
 prerequisites:
   - The 'gh' CLI must be installed and authenticated (gh auth status)
   - You need push access to target repos (to create branches and PRs)
+  - For LLM mode: the 'claude' CLI must be installed (claude.ai/code)
 """
 
 
@@ -65,16 +77,27 @@ def main() -> None:
         "The campaign is saved as YAML and can be previewed with 'plan' before applying.",
     )
     p_init.add_argument("name", help="Campaign name (used as filename and identifier, e.g. 'bump-actions-v2')")
+    p_init.add_argument("--mode", choices=["regex", "llm"], default="regex",
+                        help="Campaign mode: 'regex' for find-and-replace, 'llm' for claude-powered transformation (default: regex)")
     p_init.add_argument("--org", action="append", required=True, dest="orgs",
                         help="GitHub org to target. Can be specified multiple times for multiple orgs (e.g. --org OrgA --org OrgB)")
     p_init.add_argument("--file-glob", required=True,
                         help="Glob pattern for files to modify (e.g. '.github/workflows/*.yml' or '**/*.toml')")
-    p_init.add_argument("--find", required=True,
-                        help="Python regex pattern to find. Supports capture groups for use in --replace "
+    p_init.add_argument("--find", default="",
+                        help="Python regex pattern to find (required for regex mode). Supports capture groups "
                         "(e.g. 'MyOrg/actions/([^@]+)@v1')")
-    p_init.add_argument("--replace", required=True,
-                        help="Replacement string. Use \\1, \\2 etc. for capture group backreferences "
+    p_init.add_argument("--replace", default="",
+                        help="Replacement string (required for regex mode). Use \\1, \\2 for backreferences "
                         "(e.g. 'MyOrg/actions/\\1@v2')")
+    p_init.add_argument("--prompt", default="",
+                        help="LLM instruction for transforming files (required for llm mode)")
+    p_init.add_argument("--search-term", default="",
+                        help="Literal search term for gh search code (required for llm mode)")
+    p_init.add_argument("--context-file", default="",
+                        help="Path to a file with additional context for the LLM (optional, llm mode only)")
+    p_init.add_argument("--validation", default="",
+                        help="Shell command to validate LLM output (optional, llm mode only). "
+                        "The file path is available as $FILE")
     p_init.add_argument("--branch", required=True,
                         help="Git branch name to create in each repo (e.g. 'stuc/bump-actions-v2')")
     p_init.add_argument("--commit-msg", required=True,
@@ -170,18 +193,34 @@ def main() -> None:
 
 
 def _cmd_init(args: argparse.Namespace) -> None:
+    from pathlib import Path
+
     from rich.console import Console
     console = Console()
 
-    # Validate regex early
-    try:
-        re.compile(args.find)
-    except re.error as e:
-        print(f"Error: Invalid regex in --find: {e}", file=sys.stderr)
-        sys.exit(1)
+    if args.mode == "regex":
+        if not args.find or not args.replace:
+            print("Error: --find and --replace are required for regex mode.", file=sys.stderr)
+            sys.exit(1)
+        try:
+            re.compile(args.find)
+        except re.error as e:
+            print(f"Error: Invalid regex in --find: {e}", file=sys.stderr)
+            sys.exit(1)
+    elif args.mode == "llm":
+        if not args.prompt:
+            print("Error: --prompt is required for llm mode.", file=sys.stderr)
+            sys.exit(1)
+        if not args.search_term:
+            print("Error: --search-term is required for llm mode.", file=sys.stderr)
+            sys.exit(1)
+        if args.context_file and not Path(args.context_file).exists():
+            print(f"Error: Context file not found: {args.context_file}", file=sys.stderr)
+            sys.exit(1)
 
     campaign = Campaign(
         name=args.name,
+        mode=args.mode,
         orgs=args.orgs,
         file_glob=args.file_glob,
         find=args.find,
@@ -191,6 +230,10 @@ def _cmd_init(args: argparse.Namespace) -> None:
         pr_title=args.pr_title,
         pr_body=args.pr_body,
         exclude_repos=args.exclude_repos,
+        prompt=args.prompt,
+        search_term=args.search_term,
+        context_file=args.context_file,
+        validation=args.validation,
     )
     path = campaign.save()
     console.print(f"[green]Campaign created:[/green] {path}")
@@ -212,7 +255,11 @@ def _cmd_list() -> None:
             c = Campaign.load(name)
             orgs = ", ".join(c.orgs)
             pr_count = len(c.prs)
-            console.print(f"  [cyan]{name}[/cyan]  orgs=[dim]{orgs}[/dim]  find=[dim]{c.find}[/dim]  PRs=[dim]{pr_count}[/dim]")
+            if c.mode == "llm":
+                prompt_display = c.prompt[:50] + ("..." if len(c.prompt) > 50 else "")
+                console.print(f"  [cyan]{name}[/cyan]  mode=[dim]llm[/dim]  orgs=[dim]{orgs}[/dim]  prompt=[dim]{prompt_display}[/dim]  PRs=[dim]{pr_count}[/dim]")
+            else:
+                console.print(f"  [cyan]{name}[/cyan]  orgs=[dim]{orgs}[/dim]  find=[dim]{c.find}[/dim]  PRs=[dim]{pr_count}[/dim]")
         except Exception:
             console.print(f"  [cyan]{name}[/cyan]  [dim](could not load)[/dim]")
 

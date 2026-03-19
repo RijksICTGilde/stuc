@@ -84,6 +84,62 @@ def test_campaign_delete(tmp_path):
         assert not (tmp_path / "to-delete.yml").exists()
 
 
+def test_campaign_llm_roundtrip(tmp_path):
+    """LLM campaign data survives a save/load cycle."""
+    with patch("stuc.campaign.CAMPAIGNS_DIR", tmp_path):
+        original = Campaign(
+            name="llm-test",
+            mode="llm",
+            orgs=["OrgA"],
+            file_glob="*.md",
+            prompt="Add a license section",
+            search_term="README",
+            context_file="/tmp/context.md",
+            validation="markdownlint $FILE",
+            branch="stuc/llm-test",
+            commit_msg="docs: add license",
+            pr_title="Add license",
+            pr_body="LLM-generated.",
+        )
+        original.save()
+
+        loaded = Campaign.load("llm-test")
+        assert loaded.mode == "llm"
+        assert loaded.prompt == "Add a license section"
+        assert loaded.search_term == "README"
+        assert loaded.context_file == "/tmp/context.md"
+        assert loaded.validation == "markdownlint $FILE"
+        assert loaded.find == ""
+        assert loaded.replace == ""
+
+
+def test_campaign_backward_compat(tmp_path):
+    """Old YAML files without mode field load as regex mode."""
+    import yaml
+
+    with patch("stuc.campaign.CAMPAIGNS_DIR", tmp_path):
+        # Write a YAML file without mode/prompt/search_term fields
+        data = {
+            "name": "old-style",
+            "orgs": ["Org"],
+            "file_glob": "*.yml",
+            "find": "foo",
+            "replace": "bar",
+            "branch": "stuc/old",
+            "commit_msg": "chore",
+            "pr_title": "Old",
+            "pr_body": "",
+        }
+        (tmp_path / "old-style.yml").write_text(yaml.dump(data))
+
+        loaded = Campaign.load("old-style")
+        assert loaded.mode == "regex"
+        assert loaded.prompt == ""
+        assert loaded.search_term == ""
+        assert loaded.context_file == ""
+        assert loaded.validation == ""
+
+
 def test_campaign_delete_not_found(tmp_path):
     import pytest
 

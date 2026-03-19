@@ -28,6 +28,74 @@ def test_init_creates_campaign(tmp_path):
         assert loaded.find == r"MyOrg/actions@v1"
 
 
+def test_init_llm_campaign(tmp_path):
+    """LLM campaign can be created and loaded."""
+    with patch("stuc.campaign.CAMPAIGNS_DIR", tmp_path):
+        campaign = Campaign(
+            name="llm-cli-test",
+            mode="llm",
+            orgs=["MyOrg"],
+            file_glob="*.md",
+            prompt="Add a license section",
+            search_term="README",
+            branch="stuc/llm-test",
+            commit_msg="docs: add license",
+            pr_title="Add license",
+            pr_body="Test body.",
+        )
+        path = campaign.save()
+        assert path.exists()
+
+        loaded = Campaign.load("llm-cli-test")
+        assert loaded.mode == "llm"
+        assert loaded.prompt == "Add a license section"
+        assert loaded.search_term == "README"
+        assert loaded.find == ""
+
+
+def test_cli_init_regex_requires_find_replace():
+    """Regex mode fails without --find and --replace."""
+    result = subprocess.run(
+        [sys.executable, "-m", "stuc.cli", "init", "test",
+         "--org", "Org", "--file-glob", "*.yml",
+         "--branch", "b", "--commit-msg", "c", "--pr-title", "t"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "required" in result.stderr.lower() or "find" in result.stderr.lower()
+
+
+def test_cli_init_llm_requires_prompt():
+    """LLM mode fails without --prompt."""
+    result = subprocess.run(
+        [sys.executable, "-m", "stuc.cli", "init", "test",
+         "--mode", "llm",
+         "--org", "Org", "--file-glob", "*.yml",
+         "--search-term", "foo",
+         "--branch", "b", "--commit-msg", "c", "--pr-title", "t"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "prompt" in result.stderr.lower()
+
+
+def test_cli_init_llm_requires_search_term():
+    """LLM mode fails without --search-term."""
+    result = subprocess.run(
+        [sys.executable, "-m", "stuc.cli", "init", "test",
+         "--mode", "llm",
+         "--org", "Org", "--file-glob", "*.yml",
+         "--prompt", "do something",
+         "--branch", "b", "--commit-msg", "c", "--pr-title", "t"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "search-term" in result.stderr.lower()
+
+
 def test_cli_help():
     """CLI --help should exit 0."""
     result = subprocess.run(

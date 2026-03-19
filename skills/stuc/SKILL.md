@@ -1,11 +1,11 @@
 ---
 name: stuc
-description: Fleet-wide regex find-and-replace across GitHub org repos. Use when the user wants to make the same text change across many repositories in a GitHub org - like bumping action versions, updating URLs, renaming packages, or migrating config patterns.
+description: Fleet-wide find-and-replace across GitHub org repos. Use when the user wants to make the same text change across many repositories in a GitHub org - like bumping action versions, updating URLs, renaming packages, or migrating config patterns. Supports both regex and LLM-powered (claude) transformations.
 ---
 
-# stuc - fleet-wide regex updates
+# stuc - fleet-wide repo updates
 
-You are helping the user run a multi-repo find-and-replace campaign using the `stuc` CLI.
+You are helping the user run a multi-repo campaign using the `stuc` CLI. stuc supports two modes: **regex** (deterministic find-and-replace) and **llm** (context-aware transformations via `claude -p`).
 
 ## Prerequisite check
 
@@ -16,6 +16,14 @@ gh auth status
 ```
 
 If this fails, stop and tell the user to run `gh auth login` first.
+
+For LLM mode, also verify the `claude` CLI is available:
+
+```bash
+claude --version
+```
+
+If this fails, tell the user to install it from https://claude.ai/code.
 
 Also verify stuc is installed:
 
@@ -31,6 +39,8 @@ stuc has four steps that run in order. Always follow this sequence:
 
 ### 1. Init - create the campaign
 
+**Regex mode** (default):
+
 ```bash
 stuc init <campaign-name> \
   --org <github-org> \
@@ -42,12 +52,34 @@ stuc init <campaign-name> \
   --pr-title "<PR title>"
 ```
 
-Key details:
-- `--find` takes a Python regex. Use capture groups like `([^@]+)` and reference them in `--replace` with `\1`
+**LLM mode** (for context-aware transformations):
+
+```bash
+stuc init <campaign-name> \
+  --mode llm \
+  --org <github-org> \
+  --file-glob "<glob-pattern>" \
+  --search-term "<literal-search-term>" \
+  --prompt "<instruction-for-claude>" \
+  --branch "stuc/<campaign-name>" \
+  --commit-msg "<conventional-commit-message>" \
+  --pr-title "<PR title>"
+```
+
+Key details for both modes:
 - `--file-glob` uses fnmatch syntax: `".github/workflows/*.yml"`, `"**/*.toml"`
 - `--org` can be repeated: `--org OrgA --org OrgB`
 - `--exclude-repo` can be repeated: `--exclude-repo org/repo1 --exclude-repo org/repo2`
 - Campaign is saved to `~/.stuc/campaigns/<name>.yml`
+
+Regex mode details:
+- `--find` takes a Python regex. Use capture groups like `([^@]+)` and reference them in `--replace` with `\1`
+
+LLM mode details:
+- `--search-term` is a literal string used for GitHub code search to discover candidate files
+- `--prompt` is the instruction passed to `claude -p` for each file
+- `--context-file` (optional) path to a file with extra context included in the LLM prompt
+- `--validation` (optional) shell command to validate each transformed file (runs during `apply`)
 
 ### 2. Plan - preview changes
 
@@ -86,11 +118,15 @@ stuc <cmd> --help            # help for a specific subcommand
 
 Based on what the user wants:
 
-1. **Figure out the regex**: Translate the user's description into a `--find` regex and `--replace` string. Test the regex mentally against likely file content. If unsure, ask.
-2. **Figure out the file glob**: What files would contain this text? Workflow files, config files, source code?
-3. **Pick a good campaign name**: Short, descriptive, kebab-case (e.g. `bump-checkout-v4`, `migrate-api-url`)
-4. **Use conventional commits**: `chore:`, `fix:`, `build:` etc. for the commit message
-5. **Run each step in order**: init, plan (review with user), apply, status
+1. **Pick the right mode**: If the change is a deterministic text substitution (version bumps, URL renames, config values), use **regex** mode. If the change needs understanding of context (refactoring, adding sections, rewriting based on guidelines), use **llm** mode.
+2. **Regex mode**: Translate the user's description into a `--find` regex and `--replace` string. Test the regex mentally against likely file content. If unsure, ask.
+3. **LLM mode**: Write a clear `--prompt` instruction. Pick a `--search-term` that will find the right files via GitHub code search. If the user has a reference document (style guide, spec, etc.), use `--context-file`.
+4. **Figure out the file glob**: What files would contain this text? Workflow files, config files, source code?
+5. **Pick a good campaign name**: Short, descriptive, kebab-case (e.g. `bump-checkout-v4`, `migrate-api-url`)
+6. **Use conventional commits**: `chore:`, `fix:`, `build:` etc. for the commit message
+7. **Run each step in order**: init, plan (review with user), apply, status
+
+**LLM mode caveats**: Each file requires a `claude -p` call, so `plan` is slower. LLM output is non-deterministic - the diff at `plan` time shows the direction, but `apply` may produce slightly different output. Review carefully.
 
 ## Regex design for GitHub search
 
@@ -109,8 +145,10 @@ If `stuc plan` reports "No matching files found", the search query was probably 
 - "Campaign not found" - run `stuc list` to see what exists, or `stuc init` to create one
 - "gh command failed" - check `gh auth status` and network connectivity
 - "Invalid regex" - the `--find` pattern has syntax errors; fix and re-run `stuc init` with the same name (it overwrites)
-- "No matching files found" - check the "Search query:" output. If it looks garbled, restructure your regex so the literal part (e.g. `org/repo`) is not hidden inside character classes
+- "No matching files found" - check the "Search query:" output. For regex mode: if it looks garbled, restructure your regex so the literal part (e.g. `org/repo`) is not hidden inside character classes. For LLM mode: adjust your `--search-term`
 - PR already exists - stuc skips repos that already have an open PR on the campaign branch. This is safe to re-run.
+- "claude CLI not found" - install from https://claude.ai/code (LLM mode only)
+- "LLM transform failed" - the `claude -p` call failed or timed out. Check that `claude` works standalone. Large files may need more time.
 
 ## Important
 
