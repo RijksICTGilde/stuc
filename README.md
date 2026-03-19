@@ -4,6 +4,10 @@ Fleet-wide regex find-and-replace across GitHub org repos.
 
 `stuc` discovers matching files via `gh search code`, previews diffs, then clones repos, applies changes, and opens PRs. It works as a four-step pipeline: define a campaign, preview what would change, apply it, and track the resulting PRs.
 
+<p align="center">
+  <img src="docs/demo-status.svg" alt="stuc status output" width="700">
+</p>
+
 ## Why?
 
 Maintaining dozens (or hundreds) of repos in a GitHub org means you regularly need to update the same pattern everywhere -- bumping a shared action version, renaming an import path, rotating a config value. Doing that by hand is tedious and error-prone. `stuc` turns it into a single command.
@@ -13,18 +17,15 @@ Maintaining dozens (or hundreds) of repos in a GitHub org means you regularly ne
 Requires Python 3.11+ and the [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with access to the target orgs.
 
 ```bash
-# Clone and install
-git clone https://github.com/RijksICTGilde/stuc.git
-cd stuc
-pip install .
-
-# Or install directly
-pip install git+https://github.com/RijksICTGilde/stuc.git
+# Install from GitHub
+uv tool install git+https://github.com/RijksICTGilde/stuc.git
 ```
 
 For development:
 
 ```bash
+git clone https://github.com/RijksICTGilde/stuc.git
+cd stuc
 uv sync
 uv run stuc --help
 ```
