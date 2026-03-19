@@ -21,14 +21,17 @@ def _extract_search_term(pattern: str) -> str:
     since GitHub handles those in code search, but strip @ and version
     suffixes which GitHub doesn't index well.
     """
-    # Remove regex groups (including their content)
-    term = re.sub(r"\([^)]*\)", "", pattern)
-    # Remove regex metacharacters but keep / and -
-    term = re.sub(r"[\[\](){}^$.*+?\\|@]", "", term)
+    # Remove character classes (e.g. [a-z], [^@]+) and their quantifiers
+    term = re.sub(r"\[[^\]]*\][+*?]?(?:\{[^}]*\})?", "", pattern)
+    # Remove group syntax but keep literal content inside groups
+    term = re.sub(r"[()]", "", term)
+    # Remove regex metacharacters and escapes, but keep / and -
+    term = re.sub(r"\\[a-zA-Z]", "", term)  # \s, \d, \b, etc.
+    term = re.sub(r"[{}^$.*+?\\|@]", "", term)
     # Clean up multiple slashes or whitespace
     term = re.sub(r"\s+", " ", term).strip()
-    # Remove trailing version tags like v2, v3
-    term = re.sub(r"[/]?v\d+$", "", term)
+    # Remove trailing version-like fragments (v2, v, #v, etc.)
+    term = re.sub(r"[/#]*v\d*$", "", term)
     return term.strip("/").strip()
 
 

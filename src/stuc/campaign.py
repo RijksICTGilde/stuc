@@ -71,6 +71,13 @@ class Campaign:
             prs=data.get("prs", {}),
         )
 
+    def delete(self) -> Path:
+        path = self.path
+        if not path.exists():
+            raise FileNotFoundError(f"Campaign not found: {self.name}\nExpected at: {path}")
+        path.unlink()
+        return path
+
     @classmethod
     def list_all(cls) -> list[str]:
         if not CAMPAIGNS_DIR.exists():

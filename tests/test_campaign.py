@@ -62,3 +62,42 @@ def test_campaign_list_all(tmp_path):
         (tmp_path / "beta.yml").write_text("name: beta\n")
         result = Campaign.list_all()
         assert sorted(result) == ["alpha", "beta"]
+
+
+def test_campaign_delete(tmp_path):
+    with patch("stuc.campaign.CAMPAIGNS_DIR", tmp_path):
+        campaign = Campaign(
+            name="to-delete",
+            orgs=["TestOrg"],
+            file_glob="*.yml",
+            find="foo",
+            replace="bar",
+            branch="stuc/delete",
+            commit_msg="chore: delete",
+            pr_title="Delete",
+            pr_body="",
+        )
+        campaign.save()
+        assert (tmp_path / "to-delete.yml").exists()
+
+        campaign.delete()
+        assert not (tmp_path / "to-delete.yml").exists()
+
+
+def test_campaign_delete_not_found(tmp_path):
+    import pytest
+
+    with patch("stuc.campaign.CAMPAIGNS_DIR", tmp_path):
+        campaign = Campaign(
+            name="nonexistent",
+            orgs=["TestOrg"],
+            file_glob="*.yml",
+            find="foo",
+            replace="bar",
+            branch="stuc/nope",
+            commit_msg="chore: nope",
+            pr_title="Nope",
+            pr_body="",
+        )
+        with pytest.raises(FileNotFoundError):
+            campaign.delete()
