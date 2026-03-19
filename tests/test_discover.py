@@ -32,3 +32,11 @@ def test_extract_search_term_sha_pinned():
         r"RijksICTGilde/zad-actions/([a-z-]+)@[0-9a-f]{40}\s+#\s*v[12]\.[0-9]+\.[0-9]+"
     )
     assert "RijksICTGilde/zad-actions" in result
+
+
+def test_extract_search_term_combined_alternation():
+    """Combined regex with alternation (tag|sha) should extract clean prefix."""
+    result = _extract_search_term(
+        r"RijksICTGilde/zad-actions/([a-z-]+)@(v[12](\.[0-9]+\.[0-9]+)?|[0-9a-f]{40}\s+#\s*v[12]\.[0-9]+\.[0-9]+)\b"
+    )
+    assert result == "RijksICTGilde/zad-actions"

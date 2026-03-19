@@ -17,21 +17,24 @@ def _extract_search_term(pattern: str) -> str:
     """Extract a literal search term from a regex pattern.
 
     GitHub code search is literal text, so we strip regex syntax and return
-    the most distinctive literal fragment. We keep path separators (/)
-    since GitHub handles those in code search, but strip @ and version
-    suffixes which GitHub doesn't index well.
+    the most distinctive literal fragment. The approach: strip all regex
+    syntax, then pick the longest path-like fragment that remains.
     """
     # Remove character classes (e.g. [a-z], [^@]+) and their quantifiers
     term = re.sub(r"\[[^\]]*\][+*?]?(?:\{[^}]*\})?", "", pattern)
     # Remove group syntax but keep literal content inside groups
     term = re.sub(r"[()]", "", term)
-    # Remove regex metacharacters and escapes, but keep / and -
-    term = re.sub(r"\\[a-zA-Z]", "", term)  # \s, \d, \b, etc.
-    term = re.sub(r"[{}^$.*+?\\|@]", "", term)
-    # Clean up multiple slashes or whitespace
-    term = re.sub(r"\s+", " ", term).strip()
-    # Remove trailing version-like fragments (v2, v, #v, etc.)
-    term = re.sub(r"[/#]*v\d*$", "", term)
+    # Remove regex escape sequences (\s, \d, \b, etc.)
+    term = re.sub(r"\\[a-zA-Z]", "", term)
+    # Replace metacharacters with spaces (so they act as fragment boundaries)
+    term = re.sub(r"[{}^$.*+?\\|@#]+", " ", term)
+    # Find the longest path-like fragment (letters, digits, /, -, _, .)
+    fragments = re.findall(r"[a-zA-Z0-9/_.-]{3,}", term)
+    if not fragments:
+        return term.strip()
+    term = max(fragments, key=len)
+    # Remove trailing version-like fragments (/v2, /v, etc.)
+    term = re.sub(r"/v\d*$", "", term)
     return term.strip("/").strip()
 
 
