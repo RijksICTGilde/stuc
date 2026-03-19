@@ -49,8 +49,11 @@ def discover_repos(campaign: Campaign) -> list[dict]:
         console.print(f"[bold]Searching org: {org}[/bold]")
 
         # GitHub code search is literal text, not regex.
-        # Extract a useful search term from the pattern.
-        query = _extract_search_term(campaign.find)
+        # For LLM mode, use the explicit search term; for regex, extract from pattern.
+        if campaign.mode == "llm":
+            query = campaign.search_term
+        else:
+            query = _extract_search_term(campaign.find)
         console.print(f"  [dim]Search query: {query}[/dim]")
         try:
             hits = gh.search_code(query, owner=org)
@@ -101,6 +104,9 @@ def preview_changes(campaign: Campaign, hits: list[dict]) -> dict[str, list[dict
 
     Returns {repo: [{path, before, after}]}.
     """
+    if campaign.mode == "llm":
+        return _preview_changes_llm(campaign, hits)
+
     pattern = re.compile(campaign.find)
     by_repo: dict[str, list[dict]] = {}
 
@@ -135,10 +141,65 @@ def preview_changes(campaign: Campaign, hits: list[dict]) -> dict[str, list[dict
     return by_repo
 
 
+def _preview_changes_llm(campaign: Campaign, hits: list[dict]) -> dict[str, list[dict]]:
+    """Preview changes using LLM transformation."""
+    from stuc.llm import transform_file
+
+    context = ""
+    if campaign.context_file:
+        from pathlib import Path
+        ctx_path = Path(campaign.context_file)
+        if ctx_path.exists():
+            context = ctx_path.read_text()
+
+    console.print(f"[bold]Transforming {len(hits)} files via LLM...[/bold]")
+    by_repo: dict[str, list[dict]] = {}
+
+    for i, hit in enumerate(hits, 1):
+        repo = hit["repo"]
+        path = hit["path"]
+        console.print(f"  [{i}/{len(hits)}] {repo}/{path}")
+
+        try:
+            content = gh.run([
+                "api",
+                f"repos/{repo}/contents/{path}",
+                "--jq", ".content",
+            ])
+            decoded = base64.b64decode(content).decode("utf-8")
+        except Exception:
+            console.print(f"[yellow]Could not fetch {repo}/{path}[/yellow]")
+            continue
+
+        try:
+            new_content = transform_file(decoded, campaign.prompt, context=context, file_path=path)
+        except Exception as e:
+            console.print(f"[red]LLM transform failed for {repo}/{path}: {e}[/red]")
+            continue
+
+        if new_content.strip() == decoded.strip():
+            continue
+
+        if repo not in by_repo:
+            by_repo[repo] = []
+        by_repo[repo].append({
+            "path": path,
+            "before": decoded,
+            "after": new_content,
+        })
+
+    return by_repo
+
+
 def show_plan(campaign: Campaign) -> dict[str, list[dict]]:
     """Run discovery and show the plan."""
     console.print(f"\n[bold cyan]Campaign:[/bold cyan] {campaign.name}")
-    console.print(f"[bold cyan]Pattern:[/bold cyan] {campaign.find} → {campaign.replace}")
+    if campaign.mode == "llm":
+        console.print(f"[bold cyan]Mode:[/bold cyan] llm")
+        console.print(f"[bold cyan]Prompt:[/bold cyan] {campaign.prompt}")
+        console.print(f"[bold cyan]Search term:[/bold cyan] {campaign.search_term}")
+    else:
+        console.print(f"[bold cyan]Pattern:[/bold cyan] {campaign.find} → {campaign.replace}")
     console.print(f"[bold cyan]Files:[/bold cyan] {campaign.file_glob}")
     console.print()
 

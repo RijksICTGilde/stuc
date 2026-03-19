@@ -1,6 +1,9 @@
 """Tests for discovery module."""
 
-from stuc.discover import _extract_search_term
+from unittest.mock import patch, MagicMock
+
+from stuc.campaign import Campaign
+from stuc.discover import _extract_search_term, discover_repos
 
 
 def test_extract_search_term_action_ref():
@@ -40,3 +43,31 @@ def test_extract_search_term_combined_alternation():
         r"RijksICTGilde/zad-actions/([a-z-]+)@(v[12](\.[0-9]+\.[0-9]+)?|[0-9a-f]{40}\s+#\s*v[12]\.[0-9]+\.[0-9]+)\b"
     )
     assert result == "RijksICTGilde/zad-actions"
+
+
+def test_discover_repos_llm_uses_search_term():
+    """LLM mode uses campaign.search_term instead of extracting from find pattern."""
+    campaign = Campaign(
+        name="llm-discover",
+        mode="llm",
+        orgs=["TestOrg"],
+        file_glob="*.md",
+        search_term="README",
+        prompt="Add license",
+        branch="stuc/test",
+        commit_msg="test",
+        pr_title="test",
+        pr_body="test",
+    )
+
+    mock_hits = [
+        {"repository": {"nameWithOwner": "TestOrg/repo1"}, "path": "README.md"},
+    ]
+
+    with patch("stuc.discover.gh.search_code", return_value=mock_hits) as mock_search:
+        results = discover_repos(campaign)
+
+    # Verify search was called with the explicit search_term, not extracted from find
+    mock_search.assert_called_once_with("README", owner="TestOrg")
+    assert len(results) == 1
+    assert results[0]["repo"] == "TestOrg/repo1"

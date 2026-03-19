@@ -14,16 +14,21 @@ class Campaign:
     name: str
     orgs: list[str]
     file_glob: str
-    find: str
-    replace: str
-    branch: str
-    commit_msg: str
-    pr_title: str
-    pr_body: str
+    find: str = ""
+    replace: str = ""
+    branch: str = ""
+    commit_msg: str = ""
+    pr_title: str = ""
+    pr_body: str = ""
     repos: list[str] = field(default_factory=list)
     exclude_repos: list[str] = field(default_factory=list)
     created_at: str = ""
     prs: dict[str, str] = field(default_factory=dict)  # repo -> pr_url
+    mode: str = "regex"          # "regex" or "llm"
+    prompt: str = ""             # LLM instruction
+    search_term: str = ""        # Explicit search term for gh search code
+    context_file: str = ""       # Path to context file on disk
+    validation: str = ""         # Shell command to validate output
 
     @property
     def path(self) -> Path:
@@ -33,6 +38,7 @@ class Campaign:
         CAMPAIGNS_DIR.mkdir(parents=True, exist_ok=True)
         data = {
             "name": self.name,
+            "mode": self.mode,
             "orgs": self.orgs,
             "file_glob": self.file_glob,
             "find": self.find,
@@ -45,6 +51,10 @@ class Campaign:
             "exclude_repos": self.exclude_repos,
             "created_at": self.created_at or datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "prs": self.prs,
+            "prompt": self.prompt,
+            "search_term": self.search_term,
+            "context_file": self.context_file,
+            "validation": self.validation,
         }
         self.path.write_text(yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False))
         return self.path
@@ -59,16 +69,21 @@ class Campaign:
             name=data["name"],
             orgs=data.get("orgs", []),
             file_glob=data["file_glob"],
-            find=data["find"],
-            replace=data["replace"],
-            branch=data["branch"],
-            commit_msg=data["commit_msg"],
-            pr_title=data["pr_title"],
-            pr_body=data["pr_body"],
+            find=data.get("find", ""),
+            replace=data.get("replace", ""),
+            branch=data.get("branch", ""),
+            commit_msg=data.get("commit_msg", ""),
+            pr_title=data.get("pr_title", ""),
+            pr_body=data.get("pr_body", ""),
             repos=data.get("repos", []),
             exclude_repos=data.get("exclude_repos", []),
             created_at=data.get("created_at", ""),
             prs=data.get("prs", {}),
+            mode=data.get("mode", "regex"),
+            prompt=data.get("prompt", ""),
+            search_term=data.get("search_term", ""),
+            context_file=data.get("context_file", ""),
+            validation=data.get("validation", ""),
         )
 
     def delete(self) -> Path:
