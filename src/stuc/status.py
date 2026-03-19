@@ -134,7 +134,7 @@ def _aggregate_checks(checks: list[dict]) -> str:
 
     conclusions = [_check_conclusion(c) for c in checks]
 
-    if all(c in ("SUCCESS", "NEUTRAL") for c in conclusions):
+    if all(c in ("SUCCESS", "NEUTRAL", "SKIPPED") for c in conclusions):
         return CHECK_LABELS["SUCCESS"]
     if any(c == "FAILURE" for c in conclusions):
         n_fail = sum(1 for c in conclusions if c == "FAILURE")
