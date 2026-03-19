@@ -25,6 +25,16 @@ CHECK_LABELS = {
     "UNKNOWN": "[dim]unknown[/dim]",
 }
 
+MERGE_LABELS = {
+    "CLEAN": "[green]ready[/green]",
+    "BLOCKED": "[red]blocked[/red]",
+    "BEHIND": "[yellow]behind[/yellow]",
+    "UNSTABLE": "[yellow]unstable[/yellow]",
+    "DIRTY": "[red]conflicts[/red]",
+    "HAS_HOOKS": "[dim]has hooks[/dim]",
+    "UNKNOWN": "[dim]unknown[/dim]",
+}
+
 
 def show_status(campaign: Campaign, refresh: bool = False, auto_merge: bool = False) -> None:
     """Show status of all PRs in a campaign."""
@@ -39,24 +49,20 @@ def show_status(campaign: Campaign, refresh: bool = False, auto_merge: bool = Fa
     table.add_column("PR", style="blue")
     table.add_column("State")
     table.add_column("CI")
-    table.add_column("Merge Status", style="dim")
+    table.add_column("Merge")
+    table.add_column("Failing Checks", style="dim")
 
     counts = {"open": 0, "merged": 0, "closed": 0}
-    ci_counts = {"pass": 0, "fail": 0, "pending": 0, "other": 0}
 
     for repo, pr_url in sorted(campaign.prs.items()):
         if pr_url.startswith("ERROR") or pr_url.startswith("SKIPPED"):
-            table.add_row(repo, pr_url, "", "", "")
+            table.add_row(repo, pr_url, "", "", "", "")
             continue
 
-        if refresh:
-            info = gh.pr_status(repo, campaign.branch)
-        else:
-            # Try to get status from the stored PR URL
-            info = gh.pr_status(repo, campaign.branch)
+        info = gh.pr_status(repo, campaign.branch)
 
         if info is None:
-            table.add_row(repo, pr_url, "[dim]unknown[/dim]", "", "")
+            table.add_row(repo, f"[link={pr_url}]{_pr_short(pr_url)}[/link]", "[dim]unknown[/dim]", "", "", "")
             continue
 
         state = info.get("state", "UNKNOWN")
@@ -67,12 +73,21 @@ def show_status(campaign: Campaign, refresh: bool = False, auto_merge: bool = Fa
         checks = info.get("statusCheckRollup", []) or []
         ci_label = _aggregate_checks(checks)
 
-        merge_status = info.get("mergeStateStatus", "")
+        # Merge status
+        merge_status = info.get("mergeStateStatus", "UNKNOWN")
+        merge_label = MERGE_LABELS.get(merge_status, f"[dim]{merge_status}[/dim]")
 
-        # Short PR ref
-        pr_short = pr_url.split("/")[-1] if "/" in pr_url else pr_url
+        # Failing check names
+        failing = _failing_check_names(checks)
 
-        table.add_row(repo, f"#{pr_short}", state_label, ci_label, merge_status)
+        table.add_row(
+            repo,
+            f"[link={pr_url}]{_pr_short(pr_url)}[/link]",
+            state_label,
+            ci_label,
+            merge_label,
+            failing,
+        )
 
         # Auto-merge if requested and PR is open + CI green
         if auto_merge and state == "OPEN":
@@ -98,6 +113,15 @@ def show_status(campaign: Campaign, refresh: bool = False, auto_merge: bool = Fa
     console.print("\n" + ", ".join(summary_parts))
 
 
+def _pr_short(pr_url: str) -> str:
+    """Extract short PR reference like 'org/repo#123' from URL."""
+    # https://github.com/MinBZK/amt/pull/688 → MinBZK/amt#688
+    parts = pr_url.rstrip("/").split("/")
+    if len(parts) >= 5 and parts[-2] == "pull":
+        return f"{parts[-4]}/{parts[-3]}#{parts[-1]}"
+    return pr_url
+
+
 def _check_conclusion(check: dict) -> str:
     """Extract conclusion from a check run."""
     return check.get("conclusion", check.get("state", "UNKNOWN")).upper()
@@ -113,7 +137,19 @@ def _aggregate_checks(checks: list[dict]) -> str:
     if all(c in ("SUCCESS", "NEUTRAL") for c in conclusions):
         return CHECK_LABELS["SUCCESS"]
     if any(c == "FAILURE" for c in conclusions):
-        return CHECK_LABELS["FAILURE"]
+        n_fail = sum(1 for c in conclusions if c == "FAILURE")
+        n_total = len(conclusions)
+        return f"[red]{n_fail}/{n_total} fail[/red]"
     if any(c in ("PENDING", "EXPECTED") for c in conclusions):
         return CHECK_LABELS["PENDING"]
     return CHECK_LABELS["UNKNOWN"]
+
+
+def _failing_check_names(checks: list[dict]) -> str:
+    """Return comma-separated names of failing checks."""
+    failing = []
+    for c in checks:
+        if _check_conclusion(c) == "FAILURE":
+            name = c.get("name", c.get("context", "?"))
+            failing.append(name)
+    return ", ".join(failing) if failing else ""
