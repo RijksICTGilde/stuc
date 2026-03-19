@@ -1,6 +1,6 @@
 # stuc
 
-Fleet-wide regex find-and-replace across GitHub org repos.
+Patronen glad strijken over GitHub repos.
 
 `stuc` discovers matching files via `gh search code`, previews diffs, then clones repos, applies changes, and opens PRs. It works as a four-step pipeline: define a campaign, preview what would change, apply it, and track the resulting PRs.
 
