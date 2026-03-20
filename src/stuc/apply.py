@@ -38,9 +38,7 @@ def apply_campaign(campaign: Campaign, dry_run: bool = False, auto_merge: bool =
     if campaign.issue_repo and not campaign.issue_url:
         try:
             body = format_issue_body(campaign)
-            campaign.issue_url = gh.create_issue(
-                campaign.issue_repo, f"stuc: {campaign.pr_title}", body
-            )
+            campaign.issue_url = gh.create_issue(campaign.issue_repo, f"stuc: {campaign.pr_title}", body)
             campaign.save()
             console.print(f"  [green]Tracking issue:[/green] {campaign.issue_url}")
         except SystemExit:

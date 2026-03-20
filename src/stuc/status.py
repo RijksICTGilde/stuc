@@ -106,13 +106,15 @@ def show_status(campaign: Campaign, refresh: bool = False, auto_merge: bool = Fa
         )
 
         # Collect plain-text row for issue update
-        status_rows.append({
-            "repo": repo,
-            "pr_url": pr_url,
-            "state": PLAIN_STATE.get(state, state.lower()),
-            "ci": _aggregate_checks_plain(checks),
-            "merge": PLAIN_MERGE.get(merge_status, merge_status.lower()),
-        })
+        status_rows.append(
+            {
+                "repo": repo,
+                "pr_url": pr_url,
+                "state": PLAIN_STATE.get(state, state.lower()),
+                "ci": _aggregate_checks_plain(checks),
+                "merge": PLAIN_MERGE.get(merge_status, merge_status.lower()),
+            }
+        )
 
         # Auto-merge if requested and PR is open + CI green
         if auto_merge and state == "OPEN":

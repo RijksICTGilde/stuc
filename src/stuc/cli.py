@@ -399,7 +399,7 @@ def _cmd_config(args: argparse.Namespace) -> None:
         if value:
             console.print(value)
         else:
-            console.print(f"[dim](not set)[/dim]")
+            console.print("[dim](not set)[/dim]")
     else:
         # Set key
         if args.key not in config.DEFAULTS:

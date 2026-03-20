@@ -126,10 +126,7 @@ def update_status_table(issue_body: str, status_rows: list[dict]) -> str:
                 pr_cell = f"[{short}]({pr_url})"
             else:
                 pr_cell = _escape_md_table(pr_url)
-            lines.append(
-                f"| {row['repo']} | {pr_cell} "
-                f"| {row['state']} | {row['ci']} | {row['merge']} |"
-            )
+            lines.append(f"| {row['repo']} | {pr_cell} | {row['state']} | {row['ci']} | {row['merge']} |")
     else:
         lines.append("_No PRs created yet._")
     lines.append(STATUS_TABLE_END)

@@ -5,7 +5,6 @@ from stuc.issue import (
     STATUS_TABLE_END,
     STATUS_TABLE_START,
     STUC_DATA_MARKER,
-    STUC_FOOTER,
     extract_campaign_from_issue,
     format_issue_body,
     format_pr_body,
@@ -76,11 +75,13 @@ def test_format_issue_body_escapes_pipes():
 
 def test_format_issue_body_with_error_prs():
     """ERROR/SKIPPED PR values don't produce broken markdown links."""
-    campaign = _make_campaign(prs={
-        "Org/ok": "https://github.com/Org/ok/pull/1",
-        "Org/err": "ERROR: clone failed",
-        "Org/skip": "SKIPPED: no changes",
-    })
+    campaign = _make_campaign(
+        prs={
+            "Org/ok": "https://github.com/Org/ok/pull/1",
+            "Org/err": "ERROR: clone failed",
+            "Org/skip": "SKIPPED: no changes",
+        }
+    )
     body = format_issue_body(campaign)
 
     # Real PR gets a link
@@ -177,7 +178,13 @@ def test_update_status_table():
     body = format_issue_body(campaign)
 
     rows = [
-        {"repo": "Org/repo1", "pr_url": "https://github.com/Org/repo1/pull/1", "state": "open", "ci": "pass", "merge": "ready"},
+        {
+            "repo": "Org/repo1",
+            "pr_url": "https://github.com/Org/repo1/pull/1",
+            "state": "open",
+            "ci": "pass",
+            "merge": "ready",
+        },
     ]
     updated = update_status_table(body, rows)
 
