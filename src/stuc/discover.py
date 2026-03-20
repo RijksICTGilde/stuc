@@ -218,9 +218,10 @@ def show_plan(campaign: Campaign) -> dict[str, list[dict]]:
         console.print("[bold cyan]Mode:[/bold cyan] llm")
         console.print(f"[bold cyan]Prompt:[/bold cyan] {campaign.prompt}")
         console.print(f"[bold cyan]Search term:[/bold cyan] {campaign.search_term}")
+        console.print(f"[bold cyan]Files:[/bold cyan] {campaign.file_glob}")
     else:
         console.print(f"[bold cyan]Pattern:[/bold cyan] {campaign.find} → {campaign.replace}")
-    console.print(f"[bold cyan]Files:[/bold cyan] {campaign.file_glob}")
+        console.print(f"[bold cyan]Files:[/bold cyan] {campaign.file_glob}")
     console.print()
 
     hits = discover_repos(campaign)

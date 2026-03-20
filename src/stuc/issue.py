@@ -36,8 +36,6 @@ def format_issue_body(campaign: Campaign) -> str:
     if campaign.mode == "regex":
         parts.append(f"| Find | `{_escape_md_table(campaign.find)}` |")
         parts.append(f"| Replace | `{_escape_md_table(campaign.replace)}` |")
-    elif campaign.mode == "create":
-        parts.append(f"| Prompt | {_escape_md_table(campaign.prompt)} |")
     else:
         parts.append(f"| Prompt | {_escape_md_table(campaign.prompt)} |")
     parts.append(f"| Branch | `{_escape_md_table(campaign.branch)}` |")

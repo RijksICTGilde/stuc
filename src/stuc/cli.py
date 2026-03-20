@@ -131,12 +131,12 @@ def main() -> None:
     p_init.add_argument(
         "--context-file",
         default="",
-        help="Path to a file with additional context for the LLM (optional, llm mode only)",
+        help="Path to a file with additional context for the LLM (optional, llm/create mode)",
     )
     p_init.add_argument(
         "--validation",
         default="",
-        help="Shell command to validate LLM output (optional, llm mode only). The file path is available as $FILE",
+        help="Shell command to validate LLM output (optional, llm/create mode). The file path is available as $FILE",
     )
     p_init.add_argument(
         "--branch", required=True, help="Git branch name to create in each repo (e.g. 'stuc/bump-actions-v2')"

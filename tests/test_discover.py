@@ -131,15 +131,21 @@ def test_discover_repos_create_respects_excludes():
     assert results[0]["repo"] == "TestOrg/repo2"
 
 
-def test_show_inline_diff_new_file(capsys):
+def test_show_inline_diff_new_file():
     """Empty before shows all-green additions, capped at 20 lines."""
+    import io
+
     from rich.console import Console
 
-    # _show_inline_diff uses the module-level console; patch it to capture output
     content = "\n".join(f"line {i}" for i in range(25))
-    with patch("stuc.discover.console", Console(file=open("/dev/null", "w"))):
-        # Just verify it doesn't crash and handles the cap logic
+    buf = io.StringIO()
+    with patch("stuc.discover.console", Console(file=buf)):
         _show_inline_diff("", content)
+    output = buf.getvalue()
+    # Should show first 20 lines as additions, plus "... 5 more lines"
+    assert "line 0" in output
+    assert "line 19" in output
+    assert "5 more lines" in output
 
 
 def test_preview_changes_create_calls_llm():
