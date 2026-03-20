@@ -1,6 +1,6 @@
 # stuc
 
-Patronen glad strijken over GitHub repos.
+Plaster the same fix across all your repos.
 
 `stuc` discovers matching files via `gh search code`, previews diffs, then clones repos, applies changes, and opens PRs. It works as a four-step pipeline: define a campaign, preview what would change, apply it, and track the resulting PRs. Supports both regex find-and-replace and LLM-powered transformations via `claude`.
 
