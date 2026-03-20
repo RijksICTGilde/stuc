@@ -37,7 +37,6 @@ def format_issue_body(campaign: Campaign) -> str:
         parts.append(f"| Find | `{_escape_md_table(campaign.find)}` |")
         parts.append(f"| Replace | `{_escape_md_table(campaign.replace)}` |")
     elif campaign.mode == "create":
-        parts.append(f"| Target file | `{_escape_md_table(campaign.file_glob)}` |")
         parts.append(f"| Prompt | {_escape_md_table(campaign.prompt)} |")
     else:
         parts.append(f"| Prompt | {_escape_md_table(campaign.prompt)} |")

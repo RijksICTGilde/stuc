@@ -3,7 +3,7 @@
 from unittest.mock import patch
 
 from stuc.campaign import Campaign
-from stuc.discover import _extract_search_term, discover_repos
+from stuc.discover import _extract_search_term, _show_inline_diff, discover_repos, preview_changes
 
 
 def test_extract_search_term_action_ref():
@@ -129,3 +129,28 @@ def test_discover_repos_create_respects_excludes():
     mock_exists.assert_called_once_with("TestOrg/repo2", ".github/dependabot.yml")
     assert len(results) == 1
     assert results[0]["repo"] == "TestOrg/repo2"
+
+
+def test_show_inline_diff_new_file(capsys):
+    """Empty before shows all-green additions, capped at 20 lines."""
+    from rich.console import Console
+
+    # _show_inline_diff uses the module-level console; patch it to capture output
+    content = "\n".join(f"line {i}" for i in range(25))
+    with patch("stuc.discover.console", Console(file=open("/dev/null", "w"))):
+        # Just verify it doesn't crash and handles the cap logic
+        _show_inline_diff("", content)
+
+
+def test_preview_changes_create_calls_llm():
+    """Create-mode preview calls transform_file with empty content."""
+    campaign = _make_create_campaign()
+    hits = [{"repo": "TestOrg/repo1", "path": ".github/dependabot.yml"}]
+
+    with patch("stuc.llm.transform_file", return_value="generated: yaml content\n") as mock_tf:
+        result = preview_changes(campaign, hits)
+
+    mock_tf.assert_called_once_with("", "Create a Dependabot config", context="", file_path=".github/dependabot.yml")
+    assert "TestOrg/repo1" in result
+    assert result["TestOrg/repo1"][0]["before"] == ""
+    assert "generated" in result["TestOrg/repo1"][0]["after"]

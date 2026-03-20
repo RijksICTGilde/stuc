@@ -57,9 +57,10 @@ def test_format_issue_body_create_mode():
     body = format_issue_body(campaign)
 
     assert "| Mode | `create` |" in body
-    assert "| Target file |" in body
+    assert "| File glob |" in body
     assert "| Prompt | Create a Dependabot config |" in body
     assert "Find" not in body
+    assert "Replace" not in body
 
 
 def test_format_issue_body_with_prs():

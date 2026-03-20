@@ -225,14 +225,23 @@ def show_plan(campaign: Campaign) -> dict[str, list[dict]]:
 
     hits = discover_repos(campaign)
     if not hits:
-        console.print("[yellow]No matching files found.[/yellow]")
+        if campaign.mode == "create":
+            console.print("[yellow]No repos missing the target file.[/yellow]")
+        else:
+            console.print("[yellow]No matching files found.[/yellow]")
         return {}
 
-    console.print(f"Found [bold]{len(hits)}[/bold] matching files across repos.\n")
+    if campaign.mode == "create":
+        console.print(f"Found [bold]{len(hits)}[/bold] repos missing the target file.\n")
+    else:
+        console.print(f"Found [bold]{len(hits)}[/bold] matching files across repos.\n")
 
     changes = preview_changes(campaign, hits)
     if not changes:
-        console.print("[yellow]No actual changes needed - all files already match the replacement.[/yellow]")
+        if campaign.mode == "create":
+            console.print("[yellow]No file content could be generated.[/yellow]")
+        else:
+            console.print("[yellow]No actual changes needed - all files already match the replacement.[/yellow]")
         return {}
 
     # Show summary table
@@ -299,7 +308,6 @@ def _discover_repos_create(campaign: Campaign) -> list[dict]:
             if not gh.file_exists(repo, campaign.file_glob):
                 results.append({"repo": repo, "path": campaign.file_glob})
 
-    console.print(f"Found [bold]{len(results)}[/bold] repos missing {campaign.file_glob}.")
     return results
 
 
