@@ -50,6 +50,13 @@ examples:
   # List all campaigns
   stuc list
 
+  # Set global defaults
+  stuc config issue_repo MyOrg/fleet-ops
+  stuc config pr_body "Automated change by stuc."
+
+  # Show current config
+  stuc config
+
 prerequisites:
   - The 'gh' CLI must be installed and authenticated (gh auth status)
   - You need push access to target repos (to create branches and PRs)
@@ -66,7 +73,7 @@ def main() -> None:
         epilog=EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    subparsers = parser.add_subparsers(dest="command", required=True)  # init, list, plan, apply, delete, status
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
     # init
     p_init = subparsers.add_parser(
@@ -143,7 +150,8 @@ def main() -> None:
         "--issue-repo",
         default="",
         dest="issue_repo",
-        help="GitHub repo for the campaign tracking issue (e.g. 'MyOrg/fleet-ops')",
+        help="GitHub repo for the campaign tracking issue (e.g. 'MyOrg/fleet-ops'). "
+        "Falls back to 'stuc config issue_repo' if not provided",
     )
 
     # list
@@ -204,6 +212,16 @@ def main() -> None:
         "--auto-merge", action="store_true", help="Enable auto-merge on open PRs that have all CI checks passing"
     )
 
+    # config
+    p_config = subparsers.add_parser(
+        "config",
+        help="Get or set global stuc configuration (stored in ~/.stuc/config.yml)",
+        description="View or modify global defaults. Settings here are used as fallbacks "
+        "when init flags are not provided. Available keys: issue_repo, pr_body.",
+    )
+    p_config.add_argument("key", nargs="?", help="Config key to get or set (e.g. 'issue_repo')")
+    p_config.add_argument("value", nargs="?", help="Value to set. Omit to show current value")
+
     args = parser.parse_args()
 
     try:
@@ -219,6 +237,8 @@ def main() -> None:
             _cmd_delete(args)
         elif args.command == "status":
             _cmd_status(args)
+        elif args.command == "config":
+            _cmd_config(args)
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         print("\nHint: Use 'stuc list' to see existing campaigns, or 'stuc init' to create one.", file=sys.stderr)
@@ -240,7 +260,17 @@ def _cmd_init(args: argparse.Namespace) -> None:
 
     from rich.console import Console
 
+    from stuc import config
+
     console = Console()
+
+    # Resolve defaults from global config
+    if not args.issue_repo:
+        args.issue_repo = config.get("issue_repo")
+    if args.pr_body == "Automated migration by stuc.":
+        configured_body = config.get("pr_body")
+        if configured_body:
+            args.pr_body = configured_body
 
     if args.mode == "regex":
         if not args.find or not args.replace:
@@ -347,6 +377,40 @@ def _cmd_delete(args: argparse.Namespace) -> None:
 
     path = campaign.delete()
     console.print(f"[green]Deleted:[/green] {path}")
+
+
+def _cmd_config(args: argparse.Namespace) -> None:
+    from rich.console import Console
+
+    from stuc import config
+
+    console = Console()
+
+    if args.key is None:
+        # Show all config
+        data = config.load()
+        if not any(data.values()):
+            console.print("No configuration set. Use [bold]stuc config <key> <value>[/bold] to set defaults.")
+            return
+        for k, v in sorted(data.items()):
+            if v:
+                console.print(f"  [cyan]{k}[/cyan] = {v}")
+    elif args.value is None:
+        # Get single key
+        value = config.get(args.key)
+        if value:
+            console.print(value)
+        else:
+            console.print(f"[dim](not set)[/dim]")
+    else:
+        # Set key
+        if args.key not in config.DEFAULTS:
+            console.print(f"[red]Unknown config key:[/red] {args.key}")
+            console.print(f"Available keys: {', '.join(sorted(config.DEFAULTS))}")
+            sys.exit(1)
+        path = config.set_value(args.key, args.value)
+        console.print(f"[green]Set[/green] {args.key} = {args.value}")
+        console.print(f"[dim]Saved to {path}[/dim]")
 
 
 def _cmd_status(args: argparse.Namespace) -> None:
