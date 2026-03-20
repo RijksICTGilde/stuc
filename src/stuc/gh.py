@@ -117,6 +117,22 @@ def get_default_branch(repo: str) -> str:
     return data.get("defaultBranchRef", {}).get("name", "main")
 
 
+def create_issue(repo: str, title: str, body: str) -> str:
+    """Create a GitHub issue and return its URL."""
+    return run(["issue", "create", "--repo", repo, "--title", title, "--body", body])
+
+
+def get_issue(issue_url: str) -> dict:
+    """Get issue data (body, title, number, url) from a GitHub issue URL."""
+    output = run(["issue", "view", issue_url, "--json", "body,title,number,url"])
+    return json.loads(output)
+
+
+def update_issue(issue_url: str, body: str) -> None:
+    """Update the body of a GitHub issue."""
+    run(["issue", "edit", issue_url, "--body", body])
+
+
 def pr_list(repo: str, head: str | None = None, state: str = "all") -> list[dict]:
     """List PRs for a repo, optionally filtered by head branch."""
     args = [

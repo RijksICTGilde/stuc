@@ -43,6 +43,48 @@ def test_search_code_parses_json():
         assert results[0]["repository"] == "Org/repo1"
 
 
+def test_create_issue():
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="https://github.com/Org/repo/issues/99\n",
+            stderr="",
+        )
+        url = gh.create_issue("Org/repo", "Title", "Body text")
+        assert url == "https://github.com/Org/repo/issues/99"
+        cmd = mock_run.call_args[0][0]
+        assert cmd[:2] == ["gh", "issue"]
+        assert "create" in cmd
+
+
+def test_get_issue():
+    import json as json_mod
+
+    issue_data = {"body": "hello", "title": "T", "number": 1, "url": "https://github.com/Org/repo/issues/1"}
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=json_mod.dumps(issue_data),
+            stderr="",
+        )
+        result = gh.get_issue("https://github.com/Org/repo/issues/1")
+        assert result["body"] == "hello"
+        assert result["number"] == 1
+
+
+def test_update_issue():
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+        gh.update_issue("https://github.com/Org/repo/issues/1", "new body")
+        cmd = mock_run.call_args[0][0]
+        assert "edit" in cmd
+        assert "--body" in cmd
+
+
 def test_search_code_empty():
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(

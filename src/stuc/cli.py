@@ -139,6 +139,12 @@ def main() -> None:
         dest="exclude_repos",
         help="Repo to skip, as 'org/repo'. Can be specified multiple times",
     )
+    p_init.add_argument(
+        "--issue-repo",
+        default="",
+        dest="issue_repo",
+        help="GitHub repo for the campaign tracking issue (e.g. 'MyOrg/fleet-ops')",
+    )
 
     # list
     subparsers.add_parser(
@@ -190,7 +196,7 @@ def main() -> None:
         description="Show a table of all PRs created by a campaign with their current state (open/merged/closed), "
         "CI check results, and merge status.",
     )
-    p_status.add_argument("name", help="Campaign name (must have been applied with 'apply' first)")
+    p_status.add_argument("name", help="Campaign name or GitHub issue URL")
     p_status.add_argument(
         "--refresh", action="store_true", help="Re-fetch PR status from GitHub (otherwise uses cached data)"
     )
@@ -272,6 +278,7 @@ def _cmd_init(args: argparse.Namespace) -> None:
         search_term=args.search_term,
         context_file=args.context_file,
         validation=args.validation,
+        issue_repo=args.issue_repo,
     )
     path = campaign.save()
     console.print(f"[green]Campaign created:[/green] {path}")
@@ -343,9 +350,16 @@ def _cmd_delete(args: argparse.Namespace) -> None:
 
 
 def _cmd_status(args: argparse.Namespace) -> None:
+    from stuc import gh
+    from stuc.issue import extract_campaign_from_issue, is_issue_url
     from stuc.status import show_status
 
-    campaign = Campaign.load(args.name)
+    if is_issue_url(args.name):
+        issue_data = gh.get_issue(args.name)
+        campaign = extract_campaign_from_issue(issue_data["body"])
+        campaign.issue_url = args.name
+    else:
+        campaign = Campaign.load(args.name)
     show_status(campaign, refresh=args.refresh, auto_merge=args.auto_merge)
 
 

@@ -136,6 +136,52 @@ def test_campaign_backward_compat(tmp_path):
         assert loaded.validation == ""
 
 
+def test_campaign_issue_fields_roundtrip(tmp_path):
+    """issue_repo and issue_url survive a save/load cycle."""
+    with patch("stuc.campaign.CAMPAIGNS_DIR", tmp_path):
+        original = Campaign(
+            name="issue-test",
+            orgs=["Org"],
+            file_glob="*.yml",
+            find="foo",
+            replace="bar",
+            branch="stuc/issue",
+            commit_msg="chore",
+            pr_title="Test",
+            pr_body="",
+            issue_repo="Org/fleet-ops",
+            issue_url="https://github.com/Org/fleet-ops/issues/42",
+        )
+        original.save()
+
+        loaded = Campaign.load("issue-test")
+        assert loaded.issue_repo == "Org/fleet-ops"
+        assert loaded.issue_url == "https://github.com/Org/fleet-ops/issues/42"
+
+
+def test_campaign_issue_fields_backward_compat(tmp_path):
+    """Old YAML without issue fields loads with empty defaults."""
+    import yaml
+
+    with patch("stuc.campaign.CAMPAIGNS_DIR", tmp_path):
+        data = {
+            "name": "no-issue",
+            "orgs": ["Org"],
+            "file_glob": "*.yml",
+            "find": "foo",
+            "replace": "bar",
+            "branch": "stuc/old",
+            "commit_msg": "chore",
+            "pr_title": "Old",
+            "pr_body": "",
+        }
+        (tmp_path / "no-issue.yml").write_text(yaml.dump(data))
+
+        loaded = Campaign.load("no-issue")
+        assert loaded.issue_repo == ""
+        assert loaded.issue_url == ""
+
+
 def test_campaign_delete_not_found(tmp_path):
     import pytest
 
