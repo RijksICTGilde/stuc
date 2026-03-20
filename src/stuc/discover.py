@@ -38,6 +38,33 @@ def _extract_search_term(pattern: str) -> str:
     return term.strip("/").strip()
 
 
+def _build_search_query(search_term: str, file_glob: str) -> str:
+    """Build a GitHub code search query with path qualifier from the file glob.
+
+    GitHub code search supports 'path:' to filter by file path and 'extension:'
+    for file types. Adding these reduces result count and API calls.
+    """
+    parts = [search_term]
+
+    # Add path qualifier from file glob
+    # GitHub supports path: with limited glob (e.g. path:.github/workflows path:*.yml)
+    if file_glob:
+        # Extract directory prefix (everything before the last wildcard segment)
+        if "/" in file_glob:
+            dir_part = file_glob.rsplit("/", 1)[0]
+            # Only use directory part if it's a literal path (no wildcards)
+            if not any(c in dir_part for c in "*?["):
+                parts.append(f"path:{dir_part}")
+
+        # Extract extension for filename filtering
+        if "." in file_glob:
+            ext = file_glob.rsplit(".", 1)[-1]
+            if ext and not any(c in ext for c in "*?["):
+                parts.append(f"extension:{ext}")
+
+    return " ".join(parts)
+
+
 def discover_repos(campaign: Campaign) -> list[dict]:
     """Find target repos for a campaign.
 
@@ -56,7 +83,10 @@ def discover_repos(campaign: Campaign) -> list[dict]:
 
         # GitHub code search is literal text, not regex.
         # For LLM mode, use the explicit search term; for regex, extract from pattern.
-        query = campaign.search_term if campaign.mode == "llm" else _extract_search_term(campaign.find)
+        search_term = campaign.search_term if campaign.mode == "llm" else _extract_search_term(campaign.find)
+
+        # Add path qualifier to narrow search server-side and reduce API calls
+        query = _build_search_query(search_term, campaign.file_glob)
         console.print(f"  [dim]Search query: {query}[/dim]")
         try:
             hits = gh.search_code(query, owner=org)

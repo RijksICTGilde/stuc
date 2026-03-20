@@ -16,12 +16,15 @@ from stuc.issue import format_issue_body, format_pr_body
 console = Console()
 
 
-def apply_campaign(campaign: Campaign, dry_run: bool = False, auto_merge: bool = False) -> None:
+def apply_campaign(
+    campaign: Campaign, dry_run: bool = False, auto_merge: bool = False, changes: dict | None = None
+) -> None:
     """Apply the campaign: clone repos, make changes, push, create PRs."""
     console.print(f"\n[bold cyan]Applying campaign:[/bold cyan] {campaign.name}")
 
-    hits = discover_repos(campaign)
-    changes = preview_changes(campaign, hits)
+    if changes is None:
+        hits = discover_repos(campaign)
+        changes = preview_changes(campaign, hits)
 
     if not changes:
         console.print("[yellow]No changes to apply.[/yellow]")

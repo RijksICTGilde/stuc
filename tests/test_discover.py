@@ -3,7 +3,7 @@
 from unittest.mock import patch
 
 from stuc.campaign import Campaign
-from stuc.discover import _extract_search_term, _show_inline_diff, discover_repos, preview_changes
+from stuc.discover import _build_search_query, _extract_search_term, _show_inline_diff, discover_repos, preview_changes
 
 
 def test_extract_search_term_action_ref():
@@ -43,6 +43,27 @@ def test_extract_search_term_combined_alternation():
     assert result == "RijksICTGilde/zad-actions"
 
 
+def test_build_search_query_with_dir_and_ext():
+    """Adds path: and extension: qualifiers from file glob."""
+    result = _build_search_query("my-action", ".github/workflows/*.yml")
+    assert result == "my-action path:.github/workflows extension:yml"
+
+
+def test_build_search_query_no_dir():
+    """Glob without directory only adds language."""
+    assert _build_search_query("README", "*.md") == "README extension:md"
+
+
+def test_build_search_query_exact_path():
+    """Exact path (no wildcards) adds path: for the directory."""
+    assert _build_search_query("dependabot", ".github/dependabot.yml") == "dependabot path:.github extension:yml"
+
+
+def test_build_search_query_no_glob():
+    """Empty glob adds no qualifiers."""
+    assert _build_search_query("foo", "") == "foo"
+
+
 def test_discover_repos_llm_uses_search_term():
     """LLM mode uses campaign.search_term instead of extracting from find pattern."""
     campaign = Campaign(
@@ -65,8 +86,8 @@ def test_discover_repos_llm_uses_search_term():
     with patch("stuc.discover.gh.search_code", return_value=mock_hits) as mock_search:
         results = discover_repos(campaign)
 
-    # Verify search was called with the explicit search_term, not extracted from find
-    mock_search.assert_called_once_with("README", owner="TestOrg")
+    # Verify search was called with the explicit search_term + path qualifiers
+    mock_search.assert_called_once_with("README extension:md", owner="TestOrg")
     assert len(results) == 1
     assert results[0]["repo"] == "TestOrg/repo1"
 

@@ -21,7 +21,9 @@ classifiers = [
 ]
 dependencies = [
     "pyyaml>=6.0",
+    "questionary>=2.0",
     "rich>=13.0",
+    "typer>=0.15",
 ]
 
 [project.urls]

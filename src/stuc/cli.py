@@ -1,12 +1,15 @@
-"""CLI entrypoint with subcommands: init, list, plan, apply, status."""
+"""CLI entrypoint with subcommands: init, list, plan, apply, status, delete, config."""
 
-import argparse
 import re
 import sys
+from pathlib import Path
+from typing import Annotated
+
+import typer
 
 from stuc.campaign import Campaign
 
-EPILOG = """
+EXAMPLES = """\
 workflow:
   1. stuc init <name> ...    Create a campaign definition
   2. stuc plan <name>        Preview which repos/files would change (dry run)
@@ -40,32 +43,10 @@ examples:
     --mode create \\
     --org MyOrg \\
     --file-glob ".github/dependabot.yml" \\
-    --prompt "Create a Dependabot config that checks for GitHub Actions and pip updates weekly" \\
+    --prompt "Create a Dependabot config ..." \\
     --branch "stuc/add-dependabot" \\
     --commit-msg "ci: add Dependabot config" \\
     --pr-title "Add Dependabot configuration"
-
-  # Preview what the campaign would change
-  stuc plan bump-actions
-
-  # Apply changes (opens PRs)
-  stuc apply bump-actions
-
-  # Check PR and CI status
-  stuc status bump-actions --refresh
-
-  # Delete a campaign
-  stuc delete bump-actions --yes
-
-  # List all campaigns
-  stuc list
-
-  # Set global defaults
-  stuc config issue_repo MyOrg/fleet-ops
-  stuc config pr_body "Automated change by stuc."
-
-  # Show current config
-  stuc config
 
 prerequisites:
   - The 'gh' CLI must be installed and authenticated (gh auth status)
@@ -74,274 +55,205 @@ prerequisites:
 """
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        prog="stuc",
-        description="Fleet-wide regex find-and-replace across GitHub org repos. "
-        "Creates a 'campaign' that discovers matching files via gh search, "
-        "previews diffs, then clones repos, applies changes, and opens PRs.",
-        epilog=EPILOG,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    # init
-    p_init = subparsers.add_parser(
-        "init",
-        help="Create a new campaign definition (saved to ~/.stuc/campaigns/<name>.yml)",
-        description="Create a campaign that defines a regex find-and-replace across repos in one or more GitHub orgs. "
-        "The campaign is saved as YAML and can be previewed with 'plan' before applying.",
-    )
-    p_init.add_argument("name", help="Campaign name (used as filename and identifier, e.g. 'bump-actions-v2')")
-    p_init.add_argument(
-        "--mode",
-        choices=["regex", "llm", "create"],
-        default="regex",
-        help="Campaign mode: 'regex' for find-and-replace, 'llm' for claude-powered transformation, "
-        "'create' for adding new files to repos that don't have them (default: regex)",
-    )
-    p_init.add_argument(
-        "--org",
-        action="append",
-        required=True,
-        dest="orgs",
-        help="GitHub org to target. Can be specified multiple times (e.g. --org OrgA --org OrgB)",
-    )
-    p_init.add_argument(
-        "--file-glob",
-        required=True,
-        help="Glob pattern for files to modify (e.g. '.github/workflows/*.yml' or '**/*.toml')",
-    )
-    p_init.add_argument(
-        "--find",
-        default="",
-        help="Python regex pattern to find (required for regex mode). Supports capture groups "
-        "(e.g. 'MyOrg/actions/([^@]+)@v1')",
-    )
-    p_init.add_argument(
-        "--replace",
-        default="",
-        help="Replacement string (required for regex mode). Use \\1, \\2 for backreferences "
-        "(e.g. 'MyOrg/actions/\\1@v2')",
-    )
-    p_init.add_argument(
-        "--prompt",
-        default="",
-        help="LLM instruction for transforming or generating files (required for llm/create mode)",
-    )
-    p_init.add_argument(
-        "--search-term", default="", help="Literal search term for gh search code (required for llm mode)"
-    )
-    p_init.add_argument(
-        "--context-file",
-        default="",
-        help="Path to a file with additional context for the LLM (optional, llm/create mode)",
-    )
-    p_init.add_argument(
-        "--validation",
-        default="",
-        help="Shell command to validate LLM output (optional, llm/create mode). The file path is available as $FILE",
-    )
-    p_init.add_argument(
-        "--branch", required=True, help="Git branch name to create in each repo (e.g. 'stuc/bump-actions-v2')"
-    )
-    p_init.add_argument(
-        "--commit-msg", required=True, help="Git commit message for the change (e.g. 'chore: bump actions to v2')"
-    )
-    p_init.add_argument("--pr-title", required=True, help="Title for the pull request created in each repo")
-    p_init.add_argument(
-        "--pr-body",
-        default=None,
-        help="Body text for the pull request (default: 'Automated migration by stuc.')",
-    )
-    p_init.add_argument(
-        "--exclude-repo",
-        action="append",
-        default=[],
-        dest="exclude_repos",
-        help="Repo to skip, as 'org/repo'. Can be specified multiple times",
-    )
-    p_init.add_argument(
-        "--issue-repo",
-        default="",
-        dest="issue_repo",
-        help="GitHub repo for the campaign tracking issue (e.g. 'MyOrg/fleet-ops'). "
-        "Falls back to 'stuc config issue_repo' if not provided",
-    )
-
-    # list
-    subparsers.add_parser(
-        "list",
-        help="List all existing campaigns",
-        description=(
-            "List all campaign files in ~/.stuc/campaigns/. "
-            "Shows campaign names that can be used with plan/apply/status."
-        ),
-    )
-
-    # plan
-    p_plan = subparsers.add_parser(
-        "plan",
-        help="Preview what a campaign would change (dry run, no modifications)",
-        description="Discover matching files across GitHub orgs and show a diff preview. "
-        "This is read-only: no repos are cloned, no branches created, no PRs opened.",
-    )
-    p_plan.add_argument("name", help="Campaign name (must have been created with 'init' first)")
-
-    # apply
-    p_apply = subparsers.add_parser(
-        "apply",
-        help="Execute the campaign: clone repos, apply changes, push branches, open PRs",
-        description="For each repo with matching changes: clone it, create a branch, apply the regex replacement, "
-        "commit, push, and open a pull request. Repos that already have an open PR on the campaign branch are skipped. "
-        "PR URLs are saved to the campaign file for tracking with 'status'.",
-    )
-    p_apply.add_argument("name", help="Campaign name (must have been created with 'init' first)")
-    p_apply.add_argument(
-        "--dry-run", action="store_true", help="Show what would happen without making any changes (no clones, no PRs)"
-    )
-    p_apply.add_argument("--auto-merge", action="store_true", help="Enable auto-merge (squash) on each created PR")
-
-    # delete
-    p_delete = subparsers.add_parser(
-        "delete",
-        help="Delete a campaign definition",
-        description="Remove a campaign YAML file from ~/.stuc/campaigns/. "
-        "This does not close or clean up any PRs that were already opened.",
-    )
-    p_delete.add_argument("name", help="Campaign name to delete")
-    p_delete.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
-
-    # status
-    p_status = subparsers.add_parser(
-        "status",
-        help="Check PR state and CI status for all repos in a campaign",
-        description="Show a table of all PRs created by a campaign with their current state (open/merged/closed), "
-        "CI check results, and merge status.",
-    )
-    p_status.add_argument("name", help="Campaign name or GitHub issue URL")
-    p_status.add_argument(
-        "--refresh", action="store_true", help="Re-fetch PR status from GitHub (otherwise uses cached data)"
-    )
-    p_status.add_argument(
-        "--auto-merge", action="store_true", help="Enable auto-merge on open PRs that have all CI checks passing"
-    )
-
-    # config
-    p_config = subparsers.add_parser(
-        "config",
-        help="Get or set global stuc configuration (stored in ~/.stuc/config.yml)",
-        description="View or modify global defaults. Settings here are used as fallbacks "
-        "when init flags are not provided. Available keys: issue_repo, pr_body.",
-    )
-    p_config.add_argument("key", nargs="?", help="Config key to get or set (e.g. 'issue_repo')")
-    p_config.add_argument("value", nargs="?", help="Value to set. Omit to show current value")
-
-    args = parser.parse_args()
-
-    try:
-        if args.command == "init":
-            _cmd_init(args)
-        elif args.command == "list":
-            _cmd_list()
-        elif args.command == "plan":
-            _cmd_plan(args)
-        elif args.command == "apply":
-            _cmd_apply(args)
-        elif args.command == "delete":
-            _cmd_delete(args)
-        elif args.command == "status":
-            _cmd_status(args)
-        elif args.command == "config":
-            _cmd_config(args)
-    except FileNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        print("\nHint: Use 'stuc list' to see existing campaigns, or 'stuc init' to create one.", file=sys.stderr)
-        sys.exit(1)
-    except re.error as e:
-        print(f"Error: Invalid regex pattern: {e}", file=sys.stderr)
-        print(
-            "\nHint: The --find argument must be a valid Python regex. Use raw strings and escape special characters.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-
-def _cmd_init(args: argparse.Namespace) -> None:
-    from pathlib import Path
-
+def _print_examples() -> None:
     from rich.console import Console
-
-    from stuc import config
+    from rich.panel import Panel
+    from rich.text import Text
 
     console = Console()
+    text = Text.from_ansi(EXAMPLES)
+    console.print(Panel(text, title="Examples & Workflow", border_style="dim", expand=False))
 
-    # Resolve defaults from global config
-    if not args.issue_repo:
-        args.issue_repo = config.get("issue_repo")
-    if args.pr_body is None:
-        args.pr_body = config.get("pr_body") or "Automated migration by stuc."
 
-    if args.mode == "regex":
-        if not args.find or not args.replace:
+def _validate_campaign(
+    mode: str, file_glob: str, find: str, replace: str, prompt: str, search_term: str, context_file: str
+) -> None:
+    """Validate campaign parameters. Raises SystemExit on error."""
+    if not file_glob:
+        print("Error: --file-glob is required.", file=sys.stderr)
+        raise SystemExit(1)
+
+    if mode == "regex":
+        if not find or not replace:
             print("Error: --find and --replace are required for regex mode.", file=sys.stderr)
-            sys.exit(1)
+            raise SystemExit(1)
         try:
-            re.compile(args.find)
+            re.compile(find)
         except re.error as e:
             print(f"Error: Invalid regex in --find: {e}", file=sys.stderr)
-            sys.exit(1)
-    elif args.mode == "llm":
-        if not args.prompt:
+            raise SystemExit(1) from e
+    elif mode == "llm":
+        if not prompt:
             print("Error: --prompt is required for llm mode.", file=sys.stderr)
-            sys.exit(1)
-        if not args.search_term:
+            raise SystemExit(1)
+        if not search_term:
             print("Error: --search-term is required for llm mode.", file=sys.stderr)
-            sys.exit(1)
-        if args.context_file and not Path(args.context_file).exists():
-            print(f"Error: Context file not found: {args.context_file}", file=sys.stderr)
-            sys.exit(1)
-    elif args.mode == "create":
-        if not args.prompt:
+            raise SystemExit(1)
+        if context_file and not Path(context_file).exists():
+            print(f"Error: Context file not found: {context_file}", file=sys.stderr)
+            raise SystemExit(1)
+    elif mode == "create":
+        if not prompt:
             print("Error: --prompt is required for create mode.", file=sys.stderr)
-            sys.exit(1)
-        if any(c in args.file_glob for c in "*?["):
+            raise SystemExit(1)
+        if any(c in file_glob for c in "*?["):
             print(
                 "Error: --file-glob must be an exact file path for create mode (no wildcards).",
                 file=sys.stderr,
             )
-            sys.exit(1)
-        if args.context_file and not Path(args.context_file).exists():
-            print(f"Error: Context file not found: {args.context_file}", file=sys.stderr)
-            sys.exit(1)
+            raise SystemExit(1)
+        if context_file and not Path(context_file).exists():
+            print(f"Error: Context file not found: {context_file}", file=sys.stderr)
+            raise SystemExit(1)
+
+
+app = typer.Typer(
+    help="Fleet-wide regex find-and-replace across GitHub org repos.\n\nRun 'stuc examples' for usage examples.",
+    rich_markup_mode=None,
+    no_args_is_help=True,
+)
+
+
+@app.command()
+def examples() -> None:
+    """Show workflow, examples, and prerequisites."""
+    _print_examples()
+
+
+@app.command()
+def init(
+    name: Annotated[str | None, typer.Argument(help="Campaign name (used as filename and identifier)")] = None,
+    mode: Annotated[str | None, typer.Option(help="Campaign mode: regex, llm, or create")] = None,
+    org: Annotated[list[str] | None, typer.Option(help="GitHub org to target (repeatable)")] = None,
+    file_glob: Annotated[str | None, typer.Option(help="Glob pattern for files to modify")] = None,
+    find: Annotated[str, typer.Option(help="Python regex pattern to find")] = "",
+    replace: Annotated[str, typer.Option(help="Replacement string")] = "",
+    prompt: Annotated[str, typer.Option(help="LLM instruction for transforming/generating files")] = "",
+    search_term: Annotated[str, typer.Option(help="Literal search term for gh search code")] = "",
+    context_file: Annotated[str, typer.Option(help="Path to context file for LLM")] = "",
+    validation: Annotated[str, typer.Option(help="Shell command to validate LLM output")] = "",
+    branch: Annotated[str | None, typer.Option(help="Git branch name to create")] = None,
+    commit_msg: Annotated[str | None, typer.Option(help="Git commit message")] = None,
+    pr_title: Annotated[str | None, typer.Option(help="PR title")] = None,
+    pr_body: Annotated[str | None, typer.Option(help="PR body text")] = None,
+    exclude_repo: Annotated[list[str] | None, typer.Option(help="Repo to skip (repeatable)")] = None,
+    issue_repo: Annotated[str, typer.Option(help="Repo for tracking issue")] = "",
+) -> None:
+    """Create a new campaign definition."""
+    from rich.console import Console
+
+    from stuc import config as stuc_config
+
+    console = Console()
+
+    # Check if interactive wizard is needed
+    needs_wizard = (
+        name is None
+        or mode is None
+        or org is None
+        or file_glob is None
+        or branch is None
+        or commit_msg is None
+        or pr_title is None
+    )
+    if needs_wizard:
+        if not sys.stdin.isatty():
+            missing = []
+            if name is None:
+                missing.append("NAME")
+            if mode is None:
+                missing.append("--mode")
+            if org is None:
+                missing.append("--org")
+            if file_glob is None:
+                missing.append("--file-glob")
+            if branch is None:
+                missing.append("--branch")
+            if commit_msg is None:
+                missing.append("--commit-msg")
+            if pr_title is None:
+                missing.append("--pr-title")
+            print(f"Error: missing required options: {', '.join(missing)}", file=sys.stderr)
+            print("\nProvide all required options or run in a terminal for interactive mode.", file=sys.stderr)
+            raise SystemExit(1)
+
+        from stuc.interactive import InitParams, init_wizard
+
+        params = init_wizard(
+            InitParams(
+                name=name or "",
+                mode=mode or "",
+                org=org or [],
+                file_glob=file_glob or "",
+                find=find,
+                replace=replace,
+                prompt=prompt,
+                search_term=search_term,
+                context_file=context_file,
+                validation=validation,
+                branch=branch or "",
+                commit_msg=commit_msg or "",
+                pr_title=pr_title or "",
+                pr_body=pr_body or "",
+                exclude_repo=exclude_repo or [],
+                issue_repo=issue_repo,
+            )
+        )
+        name = params.name
+        mode = params.mode
+        org = params.org
+        file_glob = params.file_glob
+        find = params.find
+        replace = params.replace
+        prompt = params.prompt
+        search_term = params.search_term
+        context_file = params.context_file
+        validation = params.validation
+        branch = params.branch
+        commit_msg = params.commit_msg
+        pr_title = params.pr_title
+        pr_body = params.pr_body
+        exclude_repo = params.exclude_repo
+        issue_repo = params.issue_repo
+
+    mode = mode or "regex"
+    orgs = org or []
+    exclude_repos = exclude_repo or []
+
+    # Resolve defaults from global config
+    if not issue_repo:
+        issue_repo = stuc_config.get("issue_repo")
+    if not pr_body:
+        pr_body = stuc_config.get("pr_body") or "Automated migration by stuc."
+
+    _validate_campaign(mode, file_glob, find, replace, prompt, search_term, context_file)
 
     campaign = Campaign(
-        name=args.name,
-        mode=args.mode,
-        orgs=args.orgs,
-        file_glob=args.file_glob,
-        find=args.find,
-        replace=args.replace,
-        branch=args.branch,
-        commit_msg=args.commit_msg,
-        pr_title=args.pr_title,
-        pr_body=args.pr_body,
-        exclude_repos=args.exclude_repos,
-        prompt=args.prompt,
-        search_term=args.search_term,
-        context_file=args.context_file,
-        validation=args.validation,
-        issue_repo=args.issue_repo,
+        name=name,
+        mode=mode,
+        orgs=orgs,
+        file_glob=file_glob,
+        find=find,
+        replace=replace,
+        branch=branch,
+        commit_msg=commit_msg,
+        pr_title=pr_title,
+        pr_body=pr_body,
+        exclude_repos=exclude_repos,
+        prompt=prompt,
+        search_term=search_term,
+        context_file=context_file,
+        validation=validation,
+        issue_repo=issue_repo,
     )
     path = campaign.save()
     console.print(f"[green]Campaign created:[/green] {path}")
-    console.print(f"\nNext step: run [bold]stuc plan {args.name}[/bold] to preview changes.")
+    console.print(f"\nNext step: run [bold]stuc plan {name}[/bold] to preview changes.")
 
 
-def _cmd_list() -> None:
+@app.command("list")
+def list_campaigns() -> None:
+    """List all existing campaigns."""
     from rich.console import Console
 
     console = Console()
@@ -378,31 +290,69 @@ def _cmd_list() -> None:
             console.print(f"  [cyan]{name}[/cyan]  [dim](could not load)[/dim]")
 
 
-def _cmd_plan(args: argparse.Namespace) -> None:
+@app.command()
+def plan(
+    name: Annotated[str, typer.Argument(help="Campaign name")],
+) -> None:
+    """Preview what a campaign would change (dry run)."""
     from stuc.discover import show_plan
 
-    campaign = Campaign.load(args.name)
-    show_plan(campaign)
+    campaign = Campaign.load(name)
+    changes = show_plan(campaign)
+
+    # Interactive review if TTY
+    if changes and sys.stdin.isatty():
+        from stuc.interactive import review_plan
+
+        review_plan(campaign, changes)
 
 
-def _cmd_apply(args: argparse.Namespace) -> None:
+@app.command()
+def apply(
+    name: Annotated[str, typer.Argument(help="Campaign name")],
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Show what would happen")] = False,
+    auto_merge: Annotated[bool, typer.Option("--auto-merge", help="Enable auto-merge")] = False,
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip confirmation")] = False,
+) -> None:
+    """Execute the campaign: clone repos, apply changes, open PRs."""
     from stuc.apply import apply_campaign
 
-    campaign = Campaign.load(args.name)
-    apply_campaign(campaign, dry_run=args.dry_run, auto_merge=args.auto_merge)
+    campaign = Campaign.load(name)
+
+    if not yes and not dry_run and sys.stdin.isatty():
+        from stuc.discover import discover_repos, preview_changes
+        from stuc.interactive import confirm_apply
+
+        hits = discover_repos(campaign)
+        changes = preview_changes(campaign, hits)
+        if not changes:
+            print("No changes to apply.")
+            return
+        if not confirm_apply(campaign, changes):
+            print("Aborted.")
+            raise SystemExit(0)
+        apply_campaign(campaign, dry_run=dry_run, auto_merge=auto_merge, changes=changes)
+        return
+
+    apply_campaign(campaign, dry_run=dry_run, auto_merge=auto_merge)
 
 
-def _cmd_delete(args: argparse.Namespace) -> None:
+@app.command()
+def delete(
+    name: Annotated[str, typer.Argument(help="Campaign name to delete")],
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip confirmation")] = False,
+) -> None:
+    """Delete a campaign definition."""
     from rich.console import Console
 
     console = Console()
 
-    campaign = Campaign.load(args.name)
-    if not args.yes:
+    campaign = Campaign.load(name)
+    if not yes:
         pr_count = len(campaign.prs)
         if pr_count:
             console.print(f"[yellow]Warning: this campaign has {pr_count} PR(s) that will NOT be closed.[/yellow]")
-        answer = input(f"Delete campaign '{args.name}'? [y/N] ")
+        answer = input(f"Delete campaign '{name}'? [y/N] ")
         if answer.lower() not in ("y", "yes"):
             console.print("Aborted.")
             return
@@ -411,52 +361,84 @@ def _cmd_delete(args: argparse.Namespace) -> None:
     console.print(f"[green]Deleted:[/green] {path}")
 
 
-def _cmd_config(args: argparse.Namespace) -> None:
+@app.command()
+def status(
+    name: Annotated[str, typer.Argument(help="Campaign name or GitHub issue URL")],
+    refresh: Annotated[bool, typer.Option("--refresh", help="Re-fetch PR status")] = False,
+    auto_merge: Annotated[bool, typer.Option("--auto-merge", help="Enable auto-merge on passing PRs")] = False,
+) -> None:
+    """Check PR state and CI status for all repos in a campaign."""
+    from stuc import gh
+    from stuc.issue import extract_campaign_from_issue, is_issue_url
+    from stuc.status import show_status
+
+    if is_issue_url(name):
+        issue_data = gh.get_issue(name)
+        campaign = extract_campaign_from_issue(issue_data["body"])
+        campaign.issue_url = name
+    else:
+        campaign = Campaign.load(name)
+    show_status(campaign, refresh=refresh, auto_merge=auto_merge)
+
+
+@app.command()
+def config(
+    key: Annotated[str | None, typer.Argument(help="Config key to get or set")] = None,
+    value: Annotated[str | None, typer.Argument(help="Value to set")] = None,
+) -> None:
+    """Get or set global stuc configuration."""
     from rich.console import Console
 
-    from stuc import config
+    from stuc import config as stuc_config
 
     console = Console()
 
-    if args.key is None:
+    if key is None:
         # Show all config
-        data = config.load()
+        data = stuc_config.load()
         if not any(data.values()):
             console.print("No configuration set. Use [bold]stuc config <key> <value>[/bold] to set defaults.")
             return
         for k, v in sorted(data.items()):
             if v:
                 console.print(f"  [cyan]{k}[/cyan] = {v}")
-    elif args.value is None:
+    elif value is None:
         # Get single key
-        value = config.get(args.key)
-        if value:
-            console.print(value)
+        val = stuc_config.get(key)
+        if val:
+            console.print(val)
         else:
             console.print("[dim](not set)[/dim]")
     else:
         # Set key
-        if args.key not in config.DEFAULTS:
-            console.print(f"[red]Unknown config key:[/red] {args.key}")
-            console.print(f"Available keys: {', '.join(sorted(config.DEFAULTS))}")
-            sys.exit(1)
-        path = config.set_value(args.key, args.value)
-        console.print(f"[green]Set[/green] {args.key} = {args.value}")
+        if key not in stuc_config.DEFAULTS:
+            console.print(f"[red]Unknown config key:[/red] {key}")
+            console.print(f"Available keys: {', '.join(sorted(stuc_config.DEFAULTS))}")
+            raise SystemExit(1)
+        path = stuc_config.set_value(key, value)
+        console.print(f"[green]Set[/green] {key} = {value}")
         console.print(f"[dim]Saved to {path}[/dim]")
 
 
-def _cmd_status(args: argparse.Namespace) -> None:
-    from stuc import gh
-    from stuc.issue import extract_campaign_from_issue, is_issue_url
-    from stuc.status import show_status
-
-    if is_issue_url(args.name):
-        issue_data = gh.get_issue(args.name)
-        campaign = extract_campaign_from_issue(issue_data["body"])
-        campaign.issue_url = args.name
-    else:
-        campaign = Campaign.load(args.name)
-    show_status(campaign, refresh=args.refresh, auto_merge=args.auto_merge)
+def main() -> None:
+    try:
+        app()
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        print("\nHint: Use 'stuc list' to see existing campaigns, or 'stuc init' to create one.", file=sys.stderr)
+        sys.exit(1)
+    except re.error as e:
+        print(f"Error: Invalid regex pattern: {e}", file=sys.stderr)
+        print(
+            "\nHint: The --find argument must be a valid Python regex. Use raw strings and escape special characters.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
