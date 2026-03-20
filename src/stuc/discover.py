@@ -50,10 +50,7 @@ def discover_repos(campaign: Campaign) -> list[dict]:
 
         # GitHub code search is literal text, not regex.
         # For LLM mode, use the explicit search term; for regex, extract from pattern.
-        if campaign.mode == "llm":
-            query = campaign.search_term
-        else:
-            query = _extract_search_term(campaign.find)
+        query = campaign.search_term if campaign.mode == "llm" else _extract_search_term(campaign.find)
         console.print(f"  [dim]Search query: {query}[/dim]")
         try:
             hits = gh.search_code(query, owner=org)
@@ -82,10 +79,12 @@ def discover_repos(campaign: Campaign) -> list[dict]:
             if campaign.repos and repo_name not in campaign.repos:
                 continue
 
-            results.append({
-                "repo": repo_name,
-                "path": file_path,
-            })
+            results.append(
+                {
+                    "repo": repo_name,
+                    "path": file_path,
+                }
+            )
 
     # Deduplicate by (repo, path)
     seen = set()
@@ -116,11 +115,14 @@ def preview_changes(campaign: Campaign, hits: list[dict]) -> dict[str, list[dict
 
         # Fetch file content via gh api
         try:
-            content = gh.run([
-                "api",
-                f"repos/{repo}/contents/{path}",
-                "--jq", ".content",
-            ])
+            content = gh.run(
+                [
+                    "api",
+                    f"repos/{repo}/contents/{path}",
+                    "--jq",
+                    ".content",
+                ]
+            )
             decoded = base64.b64decode(content).decode("utf-8")
         except Exception:
             console.print(f"[yellow]Could not fetch {repo}/{path}[/yellow]")
@@ -132,11 +134,13 @@ def preview_changes(campaign: Campaign, hits: list[dict]) -> dict[str, list[dict
 
         if repo not in by_repo:
             by_repo[repo] = []
-        by_repo[repo].append({
-            "path": path,
-            "before": decoded,
-            "after": new_content,
-        })
+        by_repo[repo].append(
+            {
+                "path": path,
+                "before": decoded,
+                "after": new_content,
+            }
+        )
 
     return by_repo
 
@@ -148,6 +152,7 @@ def _preview_changes_llm(campaign: Campaign, hits: list[dict]) -> dict[str, list
     context = ""
     if campaign.context_file:
         from pathlib import Path
+
         ctx_path = Path(campaign.context_file)
         if ctx_path.exists():
             context = ctx_path.read_text()
@@ -161,11 +166,14 @@ def _preview_changes_llm(campaign: Campaign, hits: list[dict]) -> dict[str, list
         console.print(f"  [{i}/{len(hits)}] {repo}/{path}")
 
         try:
-            content = gh.run([
-                "api",
-                f"repos/{repo}/contents/{path}",
-                "--jq", ".content",
-            ])
+            content = gh.run(
+                [
+                    "api",
+                    f"repos/{repo}/contents/{path}",
+                    "--jq",
+                    ".content",
+                ]
+            )
             decoded = base64.b64decode(content).decode("utf-8")
         except Exception:
             console.print(f"[yellow]Could not fetch {repo}/{path}[/yellow]")
@@ -182,11 +190,13 @@ def _preview_changes_llm(campaign: Campaign, hits: list[dict]) -> dict[str, list
 
         if repo not in by_repo:
             by_repo[repo] = []
-        by_repo[repo].append({
-            "path": path,
-            "before": decoded,
-            "after": new_content,
-        })
+        by_repo[repo].append(
+            {
+                "path": path,
+                "before": decoded,
+                "after": new_content,
+            }
+        )
 
     return by_repo
 
@@ -195,7 +205,7 @@ def show_plan(campaign: Campaign) -> dict[str, list[dict]]:
     """Run discovery and show the plan."""
     console.print(f"\n[bold cyan]Campaign:[/bold cyan] {campaign.name}")
     if campaign.mode == "llm":
-        console.print(f"[bold cyan]Mode:[/bold cyan] llm")
+        console.print("[bold cyan]Mode:[/bold cyan] llm")
         console.print(f"[bold cyan]Prompt:[/bold cyan] {campaign.prompt}")
         console.print(f"[bold cyan]Search term:[/bold cyan] {campaign.search_term}")
     else:
@@ -240,7 +250,7 @@ def _show_inline_diff(before: str, after: str) -> None:
     before_lines = before.splitlines()
     after_lines = after.splitlines()
 
-    for b, a in zip(before_lines, after_lines):
+    for b, a in zip(before_lines, after_lines, strict=False):
         if b != a:
             console.print(f"    [red]- {b.strip()}[/red]")
             console.print(f"    [green]+ {a.strip()}[/green]")

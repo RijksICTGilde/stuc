@@ -24,8 +24,7 @@ def transform_file(content: str, prompt: str, context: str = "", file_path: str 
     """
     if not shutil.which("claude"):
         raise FileNotFoundError(
-            "The 'claude' CLI is not installed or not on PATH. "
-            "Install it from https://claude.ai/code"
+            "The 'claude' CLI is not installed or not on PATH. Install it from https://claude.ai/code"
         )
 
     parts = [

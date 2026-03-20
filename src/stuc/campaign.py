@@ -24,11 +24,11 @@ class Campaign:
     exclude_repos: list[str] = field(default_factory=list)
     created_at: str = ""
     prs: dict[str, str] = field(default_factory=dict)  # repo -> pr_url
-    mode: str = "regex"          # "regex" or "llm"
-    prompt: str = ""             # LLM instruction
-    search_term: str = ""        # Explicit search term for gh search code
-    context_file: str = ""       # Path to context file on disk
-    validation: str = ""         # Shell command to validate output
+    mode: str = "regex"  # "regex" or "llm"
+    prompt: str = ""  # LLM instruction
+    search_term: str = ""  # Explicit search term for gh search code
+    context_file: str = ""  # Path to context file on disk
+    validation: str = ""  # Shell command to validate output
 
     @property
     def path(self) -> Path:
@@ -49,7 +49,7 @@ class Campaign:
             "pr_body": self.pr_body,
             "repos": self.repos,
             "exclude_repos": self.exclude_repos,
-            "created_at": self.created_at or datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "created_at": self.created_at or datetime.datetime.now(datetime.UTC).isoformat(),
             "prs": self.prs,
             "prompt": self.prompt,
             "search_term": self.search_term,

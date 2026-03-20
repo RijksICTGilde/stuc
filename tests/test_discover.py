@@ -1,6 +1,6 @@
 """Tests for discovery module."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from stuc.campaign import Campaign
 from stuc.discover import _extract_search_term, discover_repos
@@ -31,9 +31,7 @@ def test_extract_search_term_literal_inside_group():
 
 def test_extract_search_term_sha_pinned():
     """SHA-pinned action references should extract the org/repo prefix."""
-    result = _extract_search_term(
-        r"RijksICTGilde/zad-actions/([a-z-]+)@[0-9a-f]{40}\s+#\s*v[12]\.[0-9]+\.[0-9]+"
-    )
+    result = _extract_search_term(r"RijksICTGilde/zad-actions/([a-z-]+)@[0-9a-f]{40}\s+#\s*v[12]\.[0-9]+\.[0-9]+")
     assert "RijksICTGilde/zad-actions" in result
 
 

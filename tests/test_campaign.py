@@ -1,10 +1,8 @@
 """Tests for campaign CRUD."""
 
-import tempfile
-from pathlib import Path
 from unittest.mock import patch
 
-from stuc.campaign import Campaign, CAMPAIGNS_DIR
+from stuc.campaign import Campaign
 
 
 def test_campaign_save_and_load(tmp_path):
@@ -27,8 +25,6 @@ def test_campaign_save_and_load(tmp_path):
 
 def test_campaign_roundtrip(tmp_path):
     """Campaign data survives a save/load cycle."""
-    campaign_file = tmp_path / "roundtrip.yml"
-
     with patch("stuc.campaign.CAMPAIGNS_DIR", tmp_path):
         original = Campaign(
             name="roundtrip",

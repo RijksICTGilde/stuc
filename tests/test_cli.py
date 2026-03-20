@@ -56,9 +56,23 @@ def test_init_llm_campaign(tmp_path):
 def test_cli_init_regex_requires_find_replace():
     """Regex mode fails without --find and --replace."""
     result = subprocess.run(
-        [sys.executable, "-m", "stuc.cli", "init", "test",
-         "--org", "Org", "--file-glob", "*.yml",
-         "--branch", "b", "--commit-msg", "c", "--pr-title", "t"],
+        [
+            sys.executable,
+            "-m",
+            "stuc.cli",
+            "init",
+            "test",
+            "--org",
+            "Org",
+            "--file-glob",
+            "*.yml",
+            "--branch",
+            "b",
+            "--commit-msg",
+            "c",
+            "--pr-title",
+            "t",
+        ],
         capture_output=True,
         text=True,
     )
@@ -69,11 +83,27 @@ def test_cli_init_regex_requires_find_replace():
 def test_cli_init_llm_requires_prompt():
     """LLM mode fails without --prompt."""
     result = subprocess.run(
-        [sys.executable, "-m", "stuc.cli", "init", "test",
-         "--mode", "llm",
-         "--org", "Org", "--file-glob", "*.yml",
-         "--search-term", "foo",
-         "--branch", "b", "--commit-msg", "c", "--pr-title", "t"],
+        [
+            sys.executable,
+            "-m",
+            "stuc.cli",
+            "init",
+            "test",
+            "--mode",
+            "llm",
+            "--org",
+            "Org",
+            "--file-glob",
+            "*.yml",
+            "--search-term",
+            "foo",
+            "--branch",
+            "b",
+            "--commit-msg",
+            "c",
+            "--pr-title",
+            "t",
+        ],
         capture_output=True,
         text=True,
     )
@@ -84,11 +114,27 @@ def test_cli_init_llm_requires_prompt():
 def test_cli_init_llm_requires_search_term():
     """LLM mode fails without --search-term."""
     result = subprocess.run(
-        [sys.executable, "-m", "stuc.cli", "init", "test",
-         "--mode", "llm",
-         "--org", "Org", "--file-glob", "*.yml",
-         "--prompt", "do something",
-         "--branch", "b", "--commit-msg", "c", "--pr-title", "t"],
+        [
+            sys.executable,
+            "-m",
+            "stuc.cli",
+            "init",
+            "test",
+            "--mode",
+            "llm",
+            "--org",
+            "Org",
+            "--file-glob",
+            "*.yml",
+            "--prompt",
+            "do something",
+            "--branch",
+            "b",
+            "--commit-msg",
+            "c",
+            "--pr-title",
+            "t",
+        ],
         capture_output=True,
         text=True,
     )
