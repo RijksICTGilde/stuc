@@ -29,6 +29,8 @@ class Campaign:
     search_term: str = ""  # Explicit search term for gh search code
     context_file: str = ""  # Path to context file on disk
     validation: str = ""  # Shell command to validate output
+    issue_repo: str = ""  # Repo for tracking issue, e.g. "MyOrg/fleet-ops"
+    issue_url: str = ""  # URL of the created tracking issue
 
     @property
     def path(self) -> Path:
@@ -55,6 +57,8 @@ class Campaign:
             "search_term": self.search_term,
             "context_file": self.context_file,
             "validation": self.validation,
+            "issue_repo": self.issue_repo,
+            "issue_url": self.issue_url,
         }
         self.path.write_text(yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False))
         return self.path
@@ -84,6 +88,8 @@ class Campaign:
             search_term=data.get("search_term", ""),
             context_file=data.get("context_file", ""),
             validation=data.get("validation", ""),
+            issue_repo=data.get("issue_repo", ""),
+            issue_url=data.get("issue_url", ""),
         )
 
     def delete(self) -> Path:

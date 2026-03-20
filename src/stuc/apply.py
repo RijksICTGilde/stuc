@@ -11,6 +11,7 @@ from rich.table import Table
 from stuc import gh
 from stuc.campaign import Campaign
 from stuc.discover import discover_repos, preview_changes
+from stuc.issue import format_issue_body, format_pr_body
 
 console = Console()
 
@@ -33,6 +34,16 @@ def apply_campaign(campaign: Campaign, dry_run: bool = False, auto_merge: bool =
         _show_summary_table(changes, {})
         return
 
+    # Create tracking issue if issue_repo is set but no issue exists yet
+    if campaign.issue_repo and not campaign.issue_url:
+        try:
+            body = format_issue_body(campaign)
+            campaign.issue_url = gh.create_issue(campaign.issue_repo, f"stuc: {campaign.pr_title}", body)
+            campaign.save()
+            console.print(f"  [green]Tracking issue:[/green] {campaign.issue_url}")
+        except SystemExit:
+            console.print("[yellow]Warning: could not create tracking issue, continuing without it.[/yellow]")
+
     results: dict[str, str] = {}  # repo -> pr_url or status
 
     for repo, files in sorted(changes.items()):
@@ -47,6 +58,14 @@ def apply_campaign(campaign: Campaign, dry_run: bool = False, auto_merge: bool =
 
     # Save updated campaign with PR URLs
     campaign.save()
+
+    # Update tracking issue with PR links
+    if campaign.issue_url:
+        try:
+            updated_body = format_issue_body(campaign)
+            gh.update_issue(campaign.issue_url, body=updated_body)
+        except SystemExit:
+            console.print("[yellow]Warning: could not update tracking issue.[/yellow]")
 
     console.print()
     _show_summary_table(changes, results)
@@ -122,9 +141,10 @@ def _apply_to_repo(campaign: Campaign, repo: str, files: list[dict], auto_merge:
         _git(repo_dir, "push", "-u", "origin", campaign.branch)
 
         # Create PR
+        body = format_pr_body(campaign.pr_body, issue_url=campaign.issue_url)
         pr_url = gh.create_pr(
             title=campaign.pr_title,
-            body=campaign.pr_body,
+            body=body,
             branch=campaign.branch,
             base=default_branch,
             cwd=repo_dir,

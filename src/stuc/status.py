@@ -5,6 +5,7 @@ from rich.table import Table
 
 from stuc import gh
 from stuc.campaign import Campaign
+from stuc.issue import pr_short, update_status_table
 
 console = Console()
 
@@ -35,6 +36,18 @@ MERGE_LABELS = {
     "UNKNOWN": "[dim]unknown[/dim]",
 }
 
+# Plain-text versions for issue body (no rich markup)
+PLAIN_STATE = {"OPEN": "open", "MERGED": "merged", "CLOSED": "closed"}
+PLAIN_MERGE = {
+    "CLEAN": "ready",
+    "BLOCKED": "blocked",
+    "BEHIND": "behind",
+    "UNSTABLE": "unstable",
+    "DIRTY": "conflicts",
+    "HAS_HOOKS": "has hooks",
+    "UNKNOWN": "unknown",
+}
+
 
 def show_status(campaign: Campaign, refresh: bool = False, auto_merge: bool = False) -> None:
     """Show status of all PRs in a campaign."""
@@ -53,16 +66,19 @@ def show_status(campaign: Campaign, refresh: bool = False, auto_merge: bool = Fa
     table.add_column("Failing Checks", style="dim")
 
     counts = {"open": 0, "merged": 0, "closed": 0}
+    status_rows: list[dict] = []  # plain-text rows for issue update
 
     for repo, pr_url in sorted(campaign.prs.items()):
         if pr_url.startswith("ERROR") or pr_url.startswith("SKIPPED"):
             table.add_row(repo, pr_url, "", "", "", "")
+            status_rows.append({"repo": repo, "pr_url": pr_url, "state": "-", "ci": "-", "merge": "-"})
             continue
 
         info = gh.pr_status(repo, campaign.branch)
 
         if info is None:
-            table.add_row(repo, f"[link={pr_url}]{_pr_short(pr_url)}[/link]", "[dim]unknown[/dim]", "", "", "")
+            table.add_row(repo, f"[link={pr_url}]{pr_short(pr_url)}[/link]", "[dim]unknown[/dim]", "", "", "")
+            status_rows.append({"repo": repo, "pr_url": pr_url, "state": "unknown", "ci": "-", "merge": "-"})
             continue
 
         state = info.get("state", "UNKNOWN")
@@ -82,11 +98,22 @@ def show_status(campaign: Campaign, refresh: bool = False, auto_merge: bool = Fa
 
         table.add_row(
             repo,
-            f"[link={pr_url}]{_pr_short(pr_url)}[/link]",
+            f"[link={pr_url}]{pr_short(pr_url)}[/link]",
             state_label,
             ci_label,
             merge_label,
             failing,
+        )
+
+        # Collect plain-text row for issue update
+        status_rows.append(
+            {
+                "repo": repo,
+                "pr_url": pr_url,
+                "state": PLAIN_STATE.get(state, state.lower()),
+                "ci": _aggregate_checks_plain(checks),
+                "merge": PLAIN_MERGE.get(merge_status, merge_status.lower()),
+            }
         )
 
         # Auto-merge if requested and PR is open + CI green
@@ -102,6 +129,15 @@ def show_status(campaign: Campaign, refresh: bool = False, auto_merge: bool = Fa
 
     console.print(table)
 
+    # Update tracking issue if set
+    if campaign.issue_url:
+        try:
+            issue_data = gh.get_issue(campaign.issue_url)
+            updated = update_status_table(issue_data["body"], status_rows)
+            gh.update_issue(campaign.issue_url, body=updated)
+        except SystemExit:
+            console.print("[yellow]Warning: could not update tracking issue.[/yellow]")
+
     # Summary
     summary_parts = []
     if counts.get("merged"):
@@ -111,15 +147,6 @@ def show_status(campaign: Campaign, refresh: bool = False, auto_merge: bool = Fa
     if counts.get("closed"):
         summary_parts.append(f"[red]{counts['closed']} closed[/red]")
     console.print("\n" + ", ".join(summary_parts))
-
-
-def _pr_short(pr_url: str) -> str:
-    """Extract short PR reference like 'org/repo#123' from URL."""
-    # https://github.com/MinBZK/amt/pull/688 → MinBZK/amt#688
-    parts = pr_url.rstrip("/").split("/")
-    if len(parts) >= 5 and parts[-2] == "pull":
-        return f"{parts[-4]}/{parts[-3]}#{parts[-1]}"
-    return pr_url
 
 
 def _check_conclusion(check: dict) -> str:
@@ -143,6 +170,21 @@ def _aggregate_checks(checks: list[dict]) -> str:
     if any(c in ("PENDING", "EXPECTED") for c in conclusions):
         return CHECK_LABELS["PENDING"]
     return CHECK_LABELS["UNKNOWN"]
+
+
+def _aggregate_checks_plain(checks: list[dict]) -> str:
+    """Aggregate checks into a plain-text label (no rich markup)."""
+    if not checks:
+        return "no checks"
+    conclusions = [_check_conclusion(c) for c in checks]
+    if all(c in ("SUCCESS", "NEUTRAL", "SKIPPED") for c in conclusions):
+        return "pass"
+    if any(c == "FAILURE" for c in conclusions):
+        n_fail = sum(1 for c in conclusions if c == "FAILURE")
+        return f"{n_fail}/{len(conclusions)} fail"
+    if any(c in ("PENDING", "EXPECTED") for c in conclusions):
+        return "pending"
+    return "unknown"
 
 
 def _failing_check_names(checks: list[dict]) -> str:

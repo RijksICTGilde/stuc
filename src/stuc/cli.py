@@ -50,6 +50,13 @@ examples:
   # List all campaigns
   stuc list
 
+  # Set global defaults
+  stuc config issue_repo MyOrg/fleet-ops
+  stuc config pr_body "Automated change by stuc."
+
+  # Show current config
+  stuc config
+
 prerequisites:
   - The 'gh' CLI must be installed and authenticated (gh auth status)
   - You need push access to target repos (to create branches and PRs)
@@ -66,7 +73,7 @@ def main() -> None:
         epilog=EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    subparsers = parser.add_subparsers(dest="command", required=True)  # init, list, plan, apply, delete, status
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
     # init
     p_init = subparsers.add_parser(
@@ -129,7 +136,7 @@ def main() -> None:
     p_init.add_argument("--pr-title", required=True, help="Title for the pull request created in each repo")
     p_init.add_argument(
         "--pr-body",
-        default="Automated migration by stuc.",
+        default=None,
         help="Body text for the pull request (default: 'Automated migration by stuc.')",
     )
     p_init.add_argument(
@@ -138,6 +145,13 @@ def main() -> None:
         default=[],
         dest="exclude_repos",
         help="Repo to skip, as 'org/repo'. Can be specified multiple times",
+    )
+    p_init.add_argument(
+        "--issue-repo",
+        default="",
+        dest="issue_repo",
+        help="GitHub repo for the campaign tracking issue (e.g. 'MyOrg/fleet-ops'). "
+        "Falls back to 'stuc config issue_repo' if not provided",
     )
 
     # list
@@ -190,13 +204,23 @@ def main() -> None:
         description="Show a table of all PRs created by a campaign with their current state (open/merged/closed), "
         "CI check results, and merge status.",
     )
-    p_status.add_argument("name", help="Campaign name (must have been applied with 'apply' first)")
+    p_status.add_argument("name", help="Campaign name or GitHub issue URL")
     p_status.add_argument(
         "--refresh", action="store_true", help="Re-fetch PR status from GitHub (otherwise uses cached data)"
     )
     p_status.add_argument(
         "--auto-merge", action="store_true", help="Enable auto-merge on open PRs that have all CI checks passing"
     )
+
+    # config
+    p_config = subparsers.add_parser(
+        "config",
+        help="Get or set global stuc configuration (stored in ~/.stuc/config.yml)",
+        description="View or modify global defaults. Settings here are used as fallbacks "
+        "when init flags are not provided. Available keys: issue_repo, pr_body.",
+    )
+    p_config.add_argument("key", nargs="?", help="Config key to get or set (e.g. 'issue_repo')")
+    p_config.add_argument("value", nargs="?", help="Value to set. Omit to show current value")
 
     args = parser.parse_args()
 
@@ -213,6 +237,8 @@ def main() -> None:
             _cmd_delete(args)
         elif args.command == "status":
             _cmd_status(args)
+        elif args.command == "config":
+            _cmd_config(args)
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         print("\nHint: Use 'stuc list' to see existing campaigns, or 'stuc init' to create one.", file=sys.stderr)
@@ -234,7 +260,15 @@ def _cmd_init(args: argparse.Namespace) -> None:
 
     from rich.console import Console
 
+    from stuc import config
+
     console = Console()
+
+    # Resolve defaults from global config
+    if not args.issue_repo:
+        args.issue_repo = config.get("issue_repo")
+    if args.pr_body is None:
+        args.pr_body = config.get("pr_body") or "Automated migration by stuc."
 
     if args.mode == "regex":
         if not args.find or not args.replace:
@@ -272,6 +306,7 @@ def _cmd_init(args: argparse.Namespace) -> None:
         search_term=args.search_term,
         context_file=args.context_file,
         validation=args.validation,
+        issue_repo=args.issue_repo,
     )
     path = campaign.save()
     console.print(f"[green]Campaign created:[/green] {path}")
@@ -342,10 +377,51 @@ def _cmd_delete(args: argparse.Namespace) -> None:
     console.print(f"[green]Deleted:[/green] {path}")
 
 
+def _cmd_config(args: argparse.Namespace) -> None:
+    from rich.console import Console
+
+    from stuc import config
+
+    console = Console()
+
+    if args.key is None:
+        # Show all config
+        data = config.load()
+        if not any(data.values()):
+            console.print("No configuration set. Use [bold]stuc config <key> <value>[/bold] to set defaults.")
+            return
+        for k, v in sorted(data.items()):
+            if v:
+                console.print(f"  [cyan]{k}[/cyan] = {v}")
+    elif args.value is None:
+        # Get single key
+        value = config.get(args.key)
+        if value:
+            console.print(value)
+        else:
+            console.print("[dim](not set)[/dim]")
+    else:
+        # Set key
+        if args.key not in config.DEFAULTS:
+            console.print(f"[red]Unknown config key:[/red] {args.key}")
+            console.print(f"Available keys: {', '.join(sorted(config.DEFAULTS))}")
+            sys.exit(1)
+        path = config.set_value(args.key, args.value)
+        console.print(f"[green]Set[/green] {args.key} = {args.value}")
+        console.print(f"[dim]Saved to {path}[/dim]")
+
+
 def _cmd_status(args: argparse.Namespace) -> None:
+    from stuc import gh
+    from stuc.issue import extract_campaign_from_issue, is_issue_url
     from stuc.status import show_status
 
-    campaign = Campaign.load(args.name)
+    if is_issue_url(args.name):
+        issue_data = gh.get_issue(args.name)
+        campaign = extract_campaign_from_issue(issue_data["body"])
+        campaign.issue_url = args.name
+    else:
+        campaign = Campaign.load(args.name)
     show_status(campaign, refresh=args.refresh, auto_merge=args.auto_merge)
 
 
