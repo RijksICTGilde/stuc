@@ -91,6 +91,8 @@ Optional flags for LLM mode:
 | `stuc status <name> --refresh` | Fetch current PR state and CI results |
 | `stuc status <name> --auto-merge` | Enable auto-merge on open PRs with passing CI |
 | `stuc delete <name> --yes` | Remove a campaign file (does not close existing PRs) |
+| `stuc config` | Show all global configuration |
+| `stuc config <key> <value>` | Set a global default (`issue_repo`, `pr_body`) |
 
 ## How it works
 
@@ -120,6 +122,26 @@ stuc init migrate-import \
 ```
 
 GitHub's code search doesn't support regex, so `stuc` extracts the longest literal substring from your pattern to use as a search query. The full regex is then applied locally against each file's content.
+
+## Campaign tracking issues
+
+stuc can create a GitHub issue that tracks all PRs in a campaign. The issue shows the campaign definition, a PR status table (updated by `stuc status`), and a machine-readable YAML block that allows reconstructing the campaign from the issue alone.
+
+```bash
+# Set a default tracking repo for all campaigns
+stuc config issue_repo MyOrg/fleet-ops
+
+# Or specify per campaign
+stuc init my-campaign \
+  --issue-repo MyOrg/fleet-ops \
+  ...
+```
+
+You can also pass a GitHub issue URL directly to `stuc status` instead of a campaign name:
+
+```bash
+stuc status https://github.com/MyOrg/fleet-ops/issues/42 --refresh
+```
 
 ## Excluding repos
 
