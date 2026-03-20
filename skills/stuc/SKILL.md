@@ -80,7 +80,7 @@ stuc init <campaign-name> \
 ```
 
 Key details for all modes:
-- `--file-glob` uses fnmatch syntax: `".github/workflows/*.yml"`, `"**/*.toml"`
+- `--file-glob` uses fnmatch syntax: `".github/workflows/*.yml"`, `"**/*.toml"` (create mode: must be an exact path, no wildcards)
 - `--org` can be repeated: `--org OrgA --org OrgB`
 - `--exclude-repo` can be repeated: `--exclude-repo org/repo1 --exclude-repo org/repo2`
 - `--issue-repo <org/repo>` creates a tracking issue in that repo (falls back to `stuc config issue_repo`)

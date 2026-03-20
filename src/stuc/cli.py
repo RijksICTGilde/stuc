@@ -70,7 +70,7 @@ examples:
 prerequisites:
   - The 'gh' CLI must be installed and authenticated (gh auth status)
   - You need push access to target repos (to create branches and PRs)
-  - For LLM mode: the 'claude' CLI must be installed (claude.ai/code)
+  - For LLM/create mode: the 'claude' CLI must be installed (claude.ai/code)
 """
 
 
@@ -124,7 +124,11 @@ def main() -> None:
         help="Replacement string (required for regex mode). Use \\1, \\2 for backreferences "
         "(e.g. 'MyOrg/actions/\\1@v2')",
     )
-    p_init.add_argument("--prompt", default="", help="LLM instruction for transforming files (required for llm mode)")
+    p_init.add_argument(
+        "--prompt",
+        default="",
+        help="LLM instruction for transforming or generating files (required for llm/create mode)",
+    )
     p_init.add_argument(
         "--search-term", default="", help="Literal search term for gh search code (required for llm mode)"
     )

@@ -180,7 +180,7 @@ stuc init my-campaign \
 - [GitHub CLI](https://cli.github.com/) installed and authenticated (`gh auth status`)
 - Push access to target repos (for creating branches and PRs)
 - Python 3.11+
-- For LLM mode: the [`claude` CLI](https://claude.ai/code)
+- For LLM/create mode: the [`claude` CLI](https://claude.ai/code)
 
 ## Development
 
