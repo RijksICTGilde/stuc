@@ -35,7 +35,7 @@ If this fails, install it: `uv tool install -e /path/to/stuc` (or `uv tool insta
 
 ## Workflow
 
-stuc has four steps that run in order. Always follow this sequence:
+stuc has seven subcommands. The core pipeline has four steps that run in order:
 
 ### 1. Init - create the campaign
 
@@ -70,6 +70,7 @@ Key details for both modes:
 - `--file-glob` uses fnmatch syntax: `".github/workflows/*.yml"`, `"**/*.toml"`
 - `--org` can be repeated: `--org OrgA --org OrgB`
 - `--exclude-repo` can be repeated: `--exclude-repo org/repo1 --exclude-repo org/repo2`
+- `--issue-repo <org/repo>` creates a tracking issue in that repo (falls back to `stuc config issue_repo`)
 - Campaign is saved to `~/.stuc/campaigns/<name>.yml`
 
 Regex mode details:
@@ -95,7 +96,7 @@ This searches GitHub for matching files and shows a diff preview. No changes are
 stuc apply <campaign-name>
 ```
 
-This clones each repo, creates a branch, applies the regex, commits, pushes, and opens a PR. Add `--dry-run` if the user wants another check. Add `--auto-merge` to enable auto-merge on PRs.
+This clones each repo, creates a branch, applies the transformation, commits, pushes, and opens a PR. If `issue_repo` is configured (via `--issue-repo` or `stuc config`), a tracking issue is created on first apply and updated with PR links. Add `--dry-run` if the user wants another check. Add `--auto-merge` to enable auto-merge on PRs.
 
 ### 4. Status - track PRs
 
@@ -105,13 +106,24 @@ stuc status <campaign-name> --refresh
 
 Shows PR state (open/merged/closed) and CI results. Use `--auto-merge` to enable auto-merge on open PRs with green CI.
 
+You can also pass a GitHub issue URL instead of a campaign name:
+
+```bash
+stuc status https://github.com/MyOrg/fleet-ops/issues/42 --refresh
+```
+
+This reconstructs the campaign from the machine-readable YAML embedded in the issue body.
+
 ## Other commands
 
 ```bash
-stuc list                    # show all existing campaigns
-stuc delete <name> [--yes]   # delete a campaign definition (does not close PRs)
-stuc --help                  # full help with examples
-stuc <cmd> --help            # help for a specific subcommand
+stuc list                              # show all existing campaigns
+stuc delete <name> [--yes]             # delete a campaign definition (does not close PRs)
+stuc config                            # show all global config
+stuc config issue_repo MyOrg/fleet-ops # set default tracking issue repo
+stuc config pr_body "Custom body text" # set default PR body
+stuc --help                            # full help with examples
+stuc <cmd> --help                      # help for a specific subcommand
 ```
 
 ## How to handle user requests
