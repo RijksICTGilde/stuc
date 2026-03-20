@@ -145,6 +145,7 @@ def test_show_inline_diff_new_file():
     # Should show first 20 lines as additions, plus "... 5 more lines"
     assert "line 0" in output
     assert "line 19" in output
+    assert "line 20" not in output
     assert "5 more lines" in output
 
 

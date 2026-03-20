@@ -17,7 +17,7 @@ gh auth status
 
 If this fails, stop and tell the user to run `gh auth login` first.
 
-For LLM mode, also verify the `claude` CLI is available:
+For LLM/create mode, also verify the `claude` CLI is available:
 
 ```bash
 claude --version

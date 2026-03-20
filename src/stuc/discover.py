@@ -39,7 +39,10 @@ def _extract_search_term(pattern: str) -> str:
 
 
 def discover_repos(campaign: Campaign) -> list[dict]:
-    """Find all repos with files matching the campaign's glob and regex.
+    """Find target repos for a campaign.
+
+    For regex/llm modes: finds repos with files matching the glob and content.
+    For create mode: finds repos missing the target file.
 
     Returns list of {repo, path} dicts.
     """
