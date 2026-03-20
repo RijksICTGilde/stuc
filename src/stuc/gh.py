@@ -33,10 +33,13 @@ def run_json(args: list[str], cwd: str | Path | None = None) -> dict | list:
 def search_code(query: str, owner: str, limit: int = 1000) -> list[dict]:
     """Search code across an org. Returns list of {repo, path} dicts."""
     args = [
-        "search", "code", query,
+        "search",
+        "code",
+        query,
         f"--owner={owner}",
         f"--limit={limit}",
-        "--json", "repository,path",
+        "--json",
+        "repository,path",
     ]
     output = run(args)
     if not output:
@@ -46,12 +49,18 @@ def search_code(query: str, owner: str, limit: int = 1000) -> list[dict]:
 
 def list_org_repos(org: str, limit: int = 1000) -> list[str]:
     """List all repos in an org. Returns list of full repo names (org/repo)."""
-    output = run([
-        "repo", "list", org,
-        "--limit", str(limit),
-        "--json", "nameWithOwner",
-        "--no-archived",
-    ])
+    output = run(
+        [
+            "repo",
+            "list",
+            org,
+            "--limit",
+            str(limit),
+            "--json",
+            "nameWithOwner",
+            "--no-archived",
+        ]
+    )
     if not output:
         return []
     repos = json.loads(output)
@@ -68,13 +77,21 @@ def clone_repo(repo: str, dest: Path, shallow: bool = True) -> None:
 
 def create_pr(title: str, body: str, branch: str, base: str = "main", cwd: str | Path | None = None) -> str:
     """Create a PR and return its URL."""
-    return run([
-        "pr", "create",
-        "--title", title,
-        "--body", body,
-        "--head", branch,
-        "--base", base,
-    ], cwd=cwd)
+    return run(
+        [
+            "pr",
+            "create",
+            "--title",
+            title,
+            "--body",
+            body,
+            "--head",
+            branch,
+            "--base",
+            base,
+        ],
+        cwd=cwd,
+    )
 
 
 def pr_status(repo: str, branch: str) -> dict | None:
@@ -102,7 +119,16 @@ def get_default_branch(repo: str) -> str:
 
 def pr_list(repo: str, head: str | None = None, state: str = "all") -> list[dict]:
     """List PRs for a repo, optionally filtered by head branch."""
-    args = ["pr", "list", "--repo", repo, "--state", state, "--json", "number,state,url,headRefName,statusCheckRollup,mergeStateStatus"]
+    args = [
+        "pr",
+        "list",
+        "--repo",
+        repo,
+        "--state",
+        state,
+        "--json",
+        "number,state,url,headRefName,statusCheckRollup,mergeStateStatus",
+    ]
     if head:
         args += ["--head", head]
     output = run(args, check=False)

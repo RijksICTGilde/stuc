@@ -1,6 +1,8 @@
 """Tests for gh wrapper — unit tests that mock subprocess."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from stuc import gh
 
@@ -24,11 +26,8 @@ def test_run_failure_exits():
             stdout="",
             stderr="not found",
         )
-        try:
+        with pytest.raises(SystemExit):
             gh.run(["nonexistent"])
-            assert False, "Should have raised SystemExit"
-        except SystemExit:
-            pass
 
 
 def test_search_code_parses_json():

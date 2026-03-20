@@ -1,8 +1,7 @@
 """Tests for the LLM module."""
 
 import subprocess
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -15,8 +14,10 @@ def test_transform_file_basic():
     mock_result.returncode = 0
     mock_result.stdout = "transformed content"
 
-    with patch("shutil.which", return_value="/usr/bin/claude"), \
-         patch("subprocess.run", return_value=mock_result) as mock_run:
+    with (
+        patch("shutil.which", return_value="/usr/bin/claude"),
+        patch("subprocess.run", return_value=mock_result) as mock_run,
+    ):
         result = transform_file("original", "add a header")
 
     assert result == "transformed content"
@@ -33,8 +34,10 @@ def test_transform_file_with_context():
     mock_result.returncode = 0
     mock_result.stdout = "output"
 
-    with patch("shutil.which", return_value="/usr/bin/claude"), \
-         patch("subprocess.run", return_value=mock_result) as mock_run:
+    with (
+        patch("shutil.which", return_value="/usr/bin/claude"),
+        patch("subprocess.run", return_value=mock_result) as mock_run,
+    ):
         transform_file("content", "instruction", context="extra context", file_path="test.md")
 
     prompt = mock_run.call_args[0][0][2]
@@ -45,9 +48,8 @@ def test_transform_file_with_context():
 
 def test_transform_file_no_claude():
     """Raises FileNotFoundError when claude is not on PATH."""
-    with patch("shutil.which", return_value=None):
-        with pytest.raises(FileNotFoundError, match="claude"):
-            transform_file("content", "instruction")
+    with patch("shutil.which", return_value=None), pytest.raises(FileNotFoundError, match="claude"):
+        transform_file("content", "instruction")
 
 
 def test_transform_file_nonzero_exit():
@@ -56,10 +58,12 @@ def test_transform_file_nonzero_exit():
     mock_result.returncode = 1
     mock_result.stderr = "something went wrong"
 
-    with patch("shutil.which", return_value="/usr/bin/claude"), \
-         patch("subprocess.run", return_value=mock_result):
-        with pytest.raises(RuntimeError, match="failed"):
-            transform_file("content", "instruction")
+    with (
+        patch("shutil.which", return_value="/usr/bin/claude"),
+        patch("subprocess.run", return_value=mock_result),
+        pytest.raises(RuntimeError, match="failed"),
+    ):
+        transform_file("content", "instruction")
 
 
 def test_transform_file_empty_output():
@@ -68,18 +72,22 @@ def test_transform_file_empty_output():
     mock_result.returncode = 0
     mock_result.stdout = "   "
 
-    with patch("shutil.which", return_value="/usr/bin/claude"), \
-         patch("subprocess.run", return_value=mock_result):
-        with pytest.raises(RuntimeError, match="empty"):
-            transform_file("content", "instruction")
+    with (
+        patch("shutil.which", return_value="/usr/bin/claude"),
+        patch("subprocess.run", return_value=mock_result),
+        pytest.raises(RuntimeError, match="empty"),
+    ):
+        transform_file("content", "instruction")
 
 
 def test_transform_file_timeout():
     """Raises TimeoutError when claude takes too long."""
-    with patch("shutil.which", return_value="/usr/bin/claude"), \
-         patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=300)):
-        with pytest.raises(subprocess.TimeoutExpired):
-            transform_file("content", "instruction")
+    with (
+        patch("shutil.which", return_value="/usr/bin/claude"),
+        patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=300)),
+        pytest.raises(subprocess.TimeoutExpired),
+    ):
+        transform_file("content", "instruction")
 
 
 def test_validate_output_pass(tmp_path):

@@ -91,11 +91,11 @@ def show_status(campaign: Campaign, refresh: bool = False, auto_merge: bool = Fa
 
         # Auto-merge if requested and PR is open + CI green
         if auto_merge and state == "OPEN":
-            all_pass = all(
-                _check_conclusion(c) == "SUCCESS"
-                for c in checks
-                if _check_conclusion(c) != "NEUTRAL"
-            ) if checks else False
+            all_pass = (
+                all(_check_conclusion(c) == "SUCCESS" for c in checks if _check_conclusion(c) != "NEUTRAL")
+                if checks
+                else False
+            )
             if all_pass:
                 console.print(f"  [dim]Enabling auto-merge on {pr_url}[/dim]")
                 gh.enable_auto_merge(pr_url)
