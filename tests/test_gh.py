@@ -85,6 +85,26 @@ def test_update_issue():
         assert "--body" in cmd
 
 
+def test_file_exists_true():
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"name": "dependabot.yml", "content": "..."}',
+            stderr="",
+        )
+        assert gh.file_exists("Org/repo", ".github/dependabot.yml") is True
+
+
+def test_file_exists_false():
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="Not Found",
+        )
+        assert gh.file_exists("Org/repo", ".github/dependabot.yml") is False
+
+
 def test_search_code_empty():
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(

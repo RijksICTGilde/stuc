@@ -24,7 +24,7 @@ class Campaign:
     exclude_repos: list[str] = field(default_factory=list)
     created_at: str = ""
     prs: dict[str, str] = field(default_factory=dict)  # repo -> pr_url
-    mode: str = "regex"  # "regex" or "llm"
+    mode: str = "regex"  # "regex", "llm", or "create"
     prompt: str = ""  # LLM instruction
     search_term: str = ""  # Explicit search term for gh search code
     context_file: str = ""  # Path to context file on disk

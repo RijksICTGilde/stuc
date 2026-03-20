@@ -46,6 +46,26 @@ def test_transform_file_with_context():
     assert "File: test.md" in prompt
 
 
+def test_transform_file_empty_content():
+    """Empty content triggers the generation prompt instead of transformation prompt."""
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = "generated content"
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/claude"),
+        patch("subprocess.run", return_value=mock_result) as mock_run,
+    ):
+        result = transform_file("", "create a config file", file_path="config.yml")
+
+    assert result == "generated content"
+    prompt = mock_run.call_args[0][0][2]
+    assert "generation tool" in prompt
+    assert "transformation tool" not in prompt
+    assert "<file>" not in prompt
+    assert "create a config file" in prompt
+
+
 def test_transform_file_no_claude():
     """Raises FileNotFoundError when claude is not on PATH."""
     with patch("shutil.which", return_value=None), pytest.raises(FileNotFoundError, match="claude"):
