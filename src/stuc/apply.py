@@ -36,12 +36,15 @@ def apply_campaign(campaign: Campaign, dry_run: bool = False, auto_merge: bool =
 
     # Create tracking issue if issue_repo is set but no issue exists yet
     if campaign.issue_repo and not campaign.issue_url:
-        body = format_issue_body(campaign)
-        campaign.issue_url = gh.create_issue(
-            campaign.issue_repo, f"stuc: {campaign.pr_title}", body
-        )
-        campaign.save()
-        console.print(f"  [green]Tracking issue:[/green] {campaign.issue_url}")
+        try:
+            body = format_issue_body(campaign)
+            campaign.issue_url = gh.create_issue(
+                campaign.issue_repo, f"stuc: {campaign.pr_title}", body
+            )
+            campaign.save()
+            console.print(f"  [green]Tracking issue:[/green] {campaign.issue_url}")
+        except SystemExit:
+            console.print("[yellow]Warning: could not create tracking issue, continuing without it.[/yellow]")
 
     results: dict[str, str] = {}  # repo -> pr_url or status
 
@@ -60,8 +63,11 @@ def apply_campaign(campaign: Campaign, dry_run: bool = False, auto_merge: bool =
 
     # Update tracking issue with PR links
     if campaign.issue_url:
-        updated_body = format_issue_body(campaign)
-        gh.update_issue(campaign.issue_url, body=updated_body)
+        try:
+            updated_body = format_issue_body(campaign)
+            gh.update_issue(campaign.issue_url, body=updated_body)
+        except SystemExit:
+            console.print("[yellow]Warning: could not update tracking issue.[/yellow]")
 
     console.print()
     _show_summary_table(changes, results)

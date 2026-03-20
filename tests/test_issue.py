@@ -5,6 +5,7 @@ from stuc.issue import (
     STATUS_TABLE_END,
     STATUS_TABLE_START,
     STUC_DATA_MARKER,
+    STUC_FOOTER,
     extract_campaign_from_issue,
     format_issue_body,
     format_pr_body,
@@ -33,20 +34,13 @@ def test_format_issue_body():
     campaign = _make_campaign()
     body = format_issue_body(campaign)
 
-    # Contains campaign definition table
     assert "| Mode | `regex` |" in body
     assert "| Orgs | TestOrg |" in body
     assert "| Find |" in body
     assert "| Replace |" in body
-
-    # Contains YAML data block
     assert STUC_DATA_MARKER in body
-
-    # Contains status table markers
     assert STATUS_TABLE_START in body
     assert STATUS_TABLE_END in body
-
-    # Contains stuc footer
     assert "stuc" in body
 
 
@@ -67,6 +61,50 @@ def test_format_issue_body_with_prs():
     assert "TestOrg/repo1#42" in body
 
 
+def test_format_issue_body_escapes_pipes():
+    """Pipe characters in regex patterns don't break the markdown table."""
+    campaign = _make_campaign(find=r"(foo|bar)", replace=r"(baz|qux)")
+    body = format_issue_body(campaign)
+
+    # Pipes should be escaped in the table
+    assert r"\|" in body
+    # But the YAML block should have the original unescaped values
+    extracted = extract_campaign_from_issue(body)
+    assert extracted.find == r"(foo|bar)"
+    assert extracted.replace == r"(baz|qux)"
+
+
+def test_format_issue_body_with_error_prs():
+    """ERROR/SKIPPED PR values don't produce broken markdown links."""
+    campaign = _make_campaign(prs={
+        "Org/ok": "https://github.com/Org/ok/pull/1",
+        "Org/err": "ERROR: clone failed",
+        "Org/skip": "SKIPPED: no changes",
+    })
+    body = format_issue_body(campaign)
+
+    # Real PR gets a link
+    assert "[Org/ok#1]" in body
+    # Error/skip get plain text, no broken links
+    assert "](ERROR" not in body
+    assert "](SKIPPED" not in body
+
+
+def test_format_issue_body_includes_issue_repo():
+    """issue_repo is included in the YAML block for roundtripping."""
+    campaign = _make_campaign(issue_repo="Org/fleet-ops")
+    body = format_issue_body(campaign)
+    extracted = extract_campaign_from_issue(body)
+    assert extracted.issue_repo == "Org/fleet-ops"
+
+
+def test_format_issue_body_status_table_has_five_columns():
+    """Initial status table uses the same 5-column format as updates."""
+    campaign = _make_campaign(prs={"Org/repo1": "https://github.com/Org/repo1/pull/1"})
+    body = format_issue_body(campaign)
+    assert "| State | CI | Merge |" in body
+
+
 def test_format_pr_body_with_issue():
     body = format_pr_body("Original body", issue_url="https://github.com/Org/repo/issues/1")
 
@@ -81,6 +119,13 @@ def test_format_pr_body_without_issue():
     assert "Original body" in body
     assert "Part of campaign" not in body
     assert "stuc" in body
+
+
+def test_format_pr_body_idempotent():
+    """Calling format_pr_body on an already-branded body doesn't double the footer."""
+    first = format_pr_body("Original body", issue_url="https://github.com/Org/repo/issues/1")
+    second = format_pr_body(first, issue_url="https://github.com/Org/repo/issues/1")
+    assert first == second
 
 
 def test_extract_campaign_roundtrip():
@@ -109,6 +154,15 @@ def test_extract_campaign_preserves_prs():
     assert extracted.prs == prs
 
 
+def test_extract_campaign_missing_fields():
+    """Gracefully handles missing fields with defaults."""
+    minimal_body = f"```yaml\n{STUC_DATA_MARKER}\nname: minimal\nfile_glob: '*.txt'\n```"
+    campaign = extract_campaign_from_issue(minimal_body)
+    assert campaign.name == "minimal"
+    assert campaign.orgs == []
+    assert campaign.find == ""
+
+
 def test_is_issue_url():
     assert is_issue_url("https://github.com/MyOrg/fleet-ops/issues/42")
     assert is_issue_url("https://github.com/org/repo/issues/1")
@@ -129,9 +183,19 @@ def test_update_status_table():
 
     assert "| State | CI | Merge |" in updated
     assert "| open | pass | ready |" in updated
-    # Original status table markers still present
     assert STATUS_TABLE_START in updated
     assert STATUS_TABLE_END in updated
+
+
+def test_update_status_table_with_error_rows():
+    """ERROR/SKIPPED rows don't produce broken markdown links."""
+    campaign = _make_campaign(prs={"Org/err": "ERROR: failed"})
+    body = format_issue_body(campaign)
+
+    rows = [{"repo": "Org/err", "pr_url": "ERROR: failed", "state": "-", "ci": "-", "merge": "-"}]
+    updated = update_status_table(body, rows)
+
+    assert "](ERROR" not in updated
 
 
 def test_update_status_table_empty_rows():

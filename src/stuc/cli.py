@@ -136,7 +136,7 @@ def main() -> None:
     p_init.add_argument("--pr-title", required=True, help="Title for the pull request created in each repo")
     p_init.add_argument(
         "--pr-body",
-        default="Automated migration by stuc.",
+        default=None,
         help="Body text for the pull request (default: 'Automated migration by stuc.')",
     )
     p_init.add_argument(
@@ -267,10 +267,8 @@ def _cmd_init(args: argparse.Namespace) -> None:
     # Resolve defaults from global config
     if not args.issue_repo:
         args.issue_repo = config.get("issue_repo")
-    if args.pr_body == "Automated migration by stuc.":
-        configured_body = config.get("pr_body")
-        if configured_body:
-            args.pr_body = configured_body
+    if args.pr_body is None:
+        args.pr_body = config.get("pr_body") or "Automated migration by stuc."
 
     if args.mode == "regex":
         if not args.find or not args.replace:

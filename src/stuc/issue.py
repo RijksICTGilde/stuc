@@ -9,6 +9,17 @@ from stuc.campaign import Campaign
 STUC_DATA_MARKER = "# stuc-campaign-data"
 STATUS_TABLE_START = "<!-- stuc-status-start -->"
 STATUS_TABLE_END = "<!-- stuc-status-end -->"
+STUC_FOOTER = "Managed by [stuc](https://github.com/RijksICTGilde/stuc)"
+
+
+def _escape_md_table(value: str) -> str:
+    """Escape characters that break markdown table cells."""
+    return value.replace("|", "\\|").replace("`", "\\`")
+
+
+def _is_pr_url(value: str) -> bool:
+    """Check if a value looks like a GitHub PR URL (vs ERROR/SKIPPED status)."""
+    return value.startswith("https://")
 
 
 def format_issue_body(campaign: Campaign) -> str:
@@ -20,25 +31,28 @@ def format_issue_body(campaign: Campaign) -> str:
     parts.append("| Field | Value |")
     parts.append("|-------|-------|")
     parts.append(f"| Mode | `{campaign.mode}` |")
-    parts.append(f"| Orgs | {', '.join(campaign.orgs)} |")
-    parts.append(f"| File glob | `{campaign.file_glob}` |")
+    parts.append(f"| Orgs | {_escape_md_table(', '.join(campaign.orgs))} |")
+    parts.append(f"| File glob | `{_escape_md_table(campaign.file_glob)}` |")
     if campaign.mode == "regex":
-        parts.append(f"| Find | `{campaign.find}` |")
-        parts.append(f"| Replace | `{campaign.replace}` |")
+        parts.append(f"| Find | `{_escape_md_table(campaign.find)}` |")
+        parts.append(f"| Replace | `{_escape_md_table(campaign.replace)}` |")
     else:
-        parts.append(f"| Prompt | {campaign.prompt} |")
-    parts.append(f"| Branch | `{campaign.branch}` |")
+        parts.append(f"| Prompt | {_escape_md_table(campaign.prompt)} |")
+    parts.append(f"| Branch | `{_escape_md_table(campaign.branch)}` |")
     parts.append("")
 
-    # PR status table
+    # PR status table (use 5-column format consistently)
     parts.append("## PR status\n")
     parts.append(STATUS_TABLE_START)
     if campaign.prs:
-        parts.append("| Repo | PR | Status |")
-        parts.append("|------|-----|--------|")
+        parts.append("| Repo | PR | State | CI | Merge |")
+        parts.append("|------|-----|-------|-----|-------|")
         for repo, pr_url in sorted(campaign.prs.items()):
-            short = _pr_short(pr_url)
-            parts.append(f"| {repo} | [{short}]({pr_url}) | - |")
+            if _is_pr_url(pr_url):
+                short = pr_short(pr_url)
+                parts.append(f"| {repo} | [{short}]({pr_url}) | - | - | - |")
+            else:
+                parts.append(f"| {repo} | {_escape_md_table(pr_url)} | - | - | - |")
     else:
         parts.append("_No PRs created yet._")
     parts.append(STATUS_TABLE_END)
@@ -60,6 +74,7 @@ def format_issue_body(campaign: Campaign) -> str:
         "prompt": campaign.prompt,
         "search_term": campaign.search_term,
         "exclude_repos": campaign.exclude_repos,
+        "issue_repo": campaign.issue_repo,
     }
     yaml_str = yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False)
     parts.append("<details>")
@@ -69,17 +84,23 @@ def format_issue_body(campaign: Campaign) -> str:
     parts.append("</details>")
     parts.append("")
     parts.append("---")
-    parts.append("Managed by [stuc](https://github.com/RijksICTGilde/stuc)")
+    parts.append(STUC_FOOTER)
 
     return "\n".join(parts)
 
 
 def format_pr_body(original_body: str, issue_url: str | None = None) -> str:
-    """Append a footer to a PR body with optional issue link and stuc branding."""
+    """Append a footer to a PR body with optional issue link and stuc branding.
+
+    Skips if the footer is already present (idempotent).
+    """
+    if STUC_FOOTER in original_body:
+        return original_body
+
     parts = [original_body, "", "---"]
     if issue_url:
         parts.append(f"Part of campaign: {issue_url}")
-    parts.append("Managed by [stuc](https://github.com/RijksICTGilde/stuc)")
+    parts.append(STUC_FOOTER)
     return "\n".join(parts)
 
 
@@ -99,9 +120,14 @@ def update_status_table(issue_body: str, status_rows: list[dict]) -> str:
         lines.append("| Repo | PR | State | CI | Merge |")
         lines.append("|------|-----|-------|-----|-------|")
         for row in status_rows:
-            short = _pr_short(row["pr_url"])
+            pr_url = row["pr_url"]
+            if _is_pr_url(pr_url):
+                short = pr_short(pr_url)
+                pr_cell = f"[{short}]({pr_url})"
+            else:
+                pr_cell = _escape_md_table(pr_url)
             lines.append(
-                f"| {row['repo']} | [{short}]({row['pr_url']}) "
+                f"| {row['repo']} | {pr_cell} "
                 f"| {row['state']} | {row['ci']} | {row['merge']} |"
             )
     else:
@@ -121,9 +147,9 @@ def extract_campaign_from_issue(issue_body: str) -> Campaign:
 
     data = yaml.safe_load(match.group(1))
     return Campaign(
-        name=data["name"],
+        name=data.get("name", "unknown"),
         orgs=data.get("orgs", []),
-        file_glob=data["file_glob"],
+        file_glob=data.get("file_glob", ""),
         find=data.get("find", ""),
         replace=data.get("replace", ""),
         branch=data.get("branch", ""),
@@ -135,6 +161,7 @@ def extract_campaign_from_issue(issue_body: str) -> Campaign:
         prompt=data.get("prompt", ""),
         search_term=data.get("search_term", ""),
         exclude_repos=data.get("exclude_repos", []),
+        issue_repo=data.get("issue_repo", ""),
     )
 
 
@@ -143,7 +170,7 @@ def is_issue_url(value: str) -> bool:
     return bool(re.match(r"https://github\.com/.+/.+/issues/\d+$", value))
 
 
-def _pr_short(pr_url: str) -> str:
+def pr_short(pr_url: str) -> str:
     """Extract short PR reference like 'org/repo#123' from URL."""
     parts = pr_url.rstrip("/").split("/")
     if len(parts) >= 5 and parts[-2] == "pull":

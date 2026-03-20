@@ -5,7 +5,7 @@ from rich.table import Table
 
 from stuc import gh
 from stuc.campaign import Campaign
-from stuc.issue import update_status_table
+from stuc.issue import pr_short, update_status_table
 
 console = Console()
 
@@ -77,7 +77,7 @@ def show_status(campaign: Campaign, refresh: bool = False, auto_merge: bool = Fa
         info = gh.pr_status(repo, campaign.branch)
 
         if info is None:
-            table.add_row(repo, f"[link={pr_url}]{_pr_short(pr_url)}[/link]", "[dim]unknown[/dim]", "", "", "")
+            table.add_row(repo, f"[link={pr_url}]{pr_short(pr_url)}[/link]", "[dim]unknown[/dim]", "", "", "")
             status_rows.append({"repo": repo, "pr_url": pr_url, "state": "unknown", "ci": "-", "merge": "-"})
             continue
 
@@ -98,7 +98,7 @@ def show_status(campaign: Campaign, refresh: bool = False, auto_merge: bool = Fa
 
         table.add_row(
             repo,
-            f"[link={pr_url}]{_pr_short(pr_url)}[/link]",
+            f"[link={pr_url}]{pr_short(pr_url)}[/link]",
             state_label,
             ci_label,
             merge_label,
@@ -129,9 +129,12 @@ def show_status(campaign: Campaign, refresh: bool = False, auto_merge: bool = Fa
 
     # Update tracking issue if set
     if campaign.issue_url:
-        issue_data = gh.get_issue(campaign.issue_url)
-        updated = update_status_table(issue_data["body"], status_rows)
-        gh.update_issue(campaign.issue_url, body=updated)
+        try:
+            issue_data = gh.get_issue(campaign.issue_url)
+            updated = update_status_table(issue_data["body"], status_rows)
+            gh.update_issue(campaign.issue_url, body=updated)
+        except SystemExit:
+            console.print("[yellow]Warning: could not update tracking issue.[/yellow]")
 
     # Summary
     summary_parts = []
@@ -142,15 +145,6 @@ def show_status(campaign: Campaign, refresh: bool = False, auto_merge: bool = Fa
     if counts.get("closed"):
         summary_parts.append(f"[red]{counts['closed']} closed[/red]")
     console.print("\n" + ", ".join(summary_parts))
-
-
-def _pr_short(pr_url: str) -> str:
-    """Extract short PR reference like 'org/repo#123' from URL."""
-    # https://github.com/MinBZK/amt/pull/688 → MinBZK/amt#688
-    parts = pr_url.rstrip("/").split("/")
-    if len(parts) >= 5 and parts[-2] == "pull":
-        return f"{parts[-4]}/{parts[-3]}#{parts[-1]}"
-    return pr_url
 
 
 def _check_conclusion(check: dict) -> str:
