@@ -142,6 +142,90 @@ def test_cli_init_llm_requires_search_term():
     assert "search-term" in result.stderr.lower()
 
 
+def test_init_create_campaign(tmp_path):
+    """Create-mode campaign can be created and loaded."""
+    with patch("stuc.campaign.CAMPAIGNS_DIR", tmp_path):
+        campaign = Campaign(
+            name="create-cli-test",
+            mode="create",
+            orgs=["MyOrg"],
+            file_glob=".github/dependabot.yml",
+            prompt="Create a Dependabot config",
+            branch="stuc/create-test",
+            commit_msg="ci: add dependabot",
+            pr_title="Add Dependabot",
+            pr_body="Test body.",
+        )
+        path = campaign.save()
+        assert path.exists()
+
+        loaded = Campaign.load("create-cli-test")
+        assert loaded.mode == "create"
+        assert loaded.prompt == "Create a Dependabot config"
+        assert loaded.file_glob == ".github/dependabot.yml"
+        assert loaded.find == ""
+
+
+def test_cli_init_create_requires_prompt():
+    """Create mode fails without --prompt."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "stuc.cli",
+            "init",
+            "test",
+            "--mode",
+            "create",
+            "--org",
+            "Org",
+            "--file-glob",
+            ".github/dependabot.yml",
+            "--branch",
+            "b",
+            "--commit-msg",
+            "c",
+            "--pr-title",
+            "t",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "prompt" in result.stderr.lower()
+
+
+def test_cli_init_create_rejects_wildcards():
+    """Create mode rejects glob wildcards in --file-glob."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "stuc.cli",
+            "init",
+            "test",
+            "--mode",
+            "create",
+            "--org",
+            "Org",
+            "--file-glob",
+            "*.yml",
+            "--prompt",
+            "create something",
+            "--branch",
+            "b",
+            "--commit-msg",
+            "c",
+            "--pr-title",
+            "t",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "wildcard" in result.stderr.lower() or "exact" in result.stderr.lower()
+
+
 def test_cli_help():
     """CLI --help should exit 0."""
     result = subprocess.run(

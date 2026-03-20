@@ -2,7 +2,7 @@
 
 Plaster the same fix across all your repos.
 
-`stuc` discovers matching files via `gh search code`, previews diffs, then clones repos, applies changes, and opens PRs. It works as a four-step pipeline: define a campaign, preview what would change, apply it, and track the resulting PRs. Supports both regex find-and-replace and LLM-powered transformations via `claude`.
+`stuc` discovers matching files via `gh search code`, previews diffs, then clones repos, applies changes, and opens PRs. It works as a four-step pipeline: define a campaign, preview what would change, apply it, and track the resulting PRs. Supports regex find-and-replace, LLM-powered transformations via `claude`, and creating new files in repos that don't have them.
 
 <p align="center">
   <img src="docs/demo-status.svg" alt="stuc status output" width="700">
@@ -78,6 +78,26 @@ Optional flags for LLM mode:
 - `--context-file <path>` -- include a reference document (style guide, spec) in the LLM prompt
 - `--validation <cmd>` -- shell command to validate each transformed file during `apply`
 
+### Create mode
+
+When you need to add a new file to repos that don't have one yet (Dependabot config, LICENSE, SECURITY.md, etc.), use `--mode create`. Discovery is inverted: stuc finds repos **missing** the target file instead of repos containing matching content.
+
+```bash
+stuc init add-dependabot \
+  --mode create \
+  --org MyOrg \
+  --file-glob ".github/dependabot.yml" \
+  --prompt "Create a Dependabot config that checks for GitHub Actions and pip updates weekly" \
+  --branch "stuc/add-dependabot" \
+  --commit-msg "ci: add Dependabot config" \
+  --pr-title "Add Dependabot configuration"
+
+stuc plan add-dependabot    # preview which repos are missing the file and generated content
+stuc apply add-dependabot   # create the file and open PRs
+```
+
+Create mode requires `--file-glob` to be an exact file path (no wildcards) and `--prompt` for the LLM instruction. Optional `--context-file` and `--validation` work the same as in LLM mode.
+
 ## Commands
 
 | Command | What it does |
@@ -96,15 +116,15 @@ Optional flags for LLM mode:
 
 ## How it works
 
-1. **init** saves a campaign definition as YAML in `~/.stuc/campaigns/`. In regex mode the definition includes the find/replace pattern; in LLM mode it stores the prompt and search term. Both modes share target orgs, file glob, and PR metadata.
+1. **init** saves a campaign definition as YAML in `~/.stuc/campaigns/`. In regex mode the definition includes the find/replace pattern; in LLM mode it stores the prompt and search term; in create mode it stores the target file path and generation prompt. All modes share target orgs, file glob, and PR metadata.
 
-2. **plan** uses `gh search code` to find files across the target orgs, fetches their content via the GitHub API, applies the transformation (regex or LLM), and shows a colored diff. Nothing is modified.
+2. **plan** discovers target repos and previews changes. Regex and LLM modes use `gh search code` to find files containing matching content. Create mode uses `gh repo list` to enumerate repos and checks which ones are missing the target file. Nothing is modified.
 
-3. **apply** re-discovers matching files, clones each affected repo into a temp directory, creates a branch, applies the transformation, commits, pushes, and opens a PR. Repos that already have an open PR on the campaign branch are skipped. PR URLs are saved back to the campaign file.
+3. **apply** re-discovers targets, clones each affected repo into a temp directory, creates a branch, applies the change (regex substitution, LLM transformation, or file creation), commits, pushes, and opens a PR. Repos that already have an open PR on the campaign branch are skipped. PR URLs are saved back to the campaign file.
 
 4. **status** queries GitHub for the state of every PR in the campaign: open/merged/closed, CI check results, and merge status. With `--auto-merge`, it enables squash auto-merge on PRs where all checks pass.
 
-LLM mode calls `claude -p` for each file, so `plan` is slower than regex mode. The output is non-deterministic: diffs at plan time show the direction of the change, but `apply` may produce slightly different results. Review the plan carefully before applying.
+LLM and create modes call `claude -p` for each file, so `plan` is slower than regex mode. The output is non-deterministic: diffs at plan time show the direction of the change, but `apply` may produce slightly different results. Review the plan carefully before applying.
 
 ## Regex patterns
 
@@ -160,7 +180,7 @@ stuc init my-campaign \
 - [GitHub CLI](https://cli.github.com/) installed and authenticated (`gh auth status`)
 - Push access to target repos (for creating branches and PRs)
 - Python 3.11+
-- For LLM mode: the [`claude` CLI](https://claude.ai/code)
+- For LLM/create mode: the [`claude` CLI](https://claude.ai/code)
 
 ## Development
 

@@ -109,6 +109,30 @@ def test_campaign_llm_roundtrip(tmp_path):
         assert loaded.replace == ""
 
 
+def test_campaign_create_roundtrip(tmp_path):
+    """Create-mode campaign data survives a save/load cycle."""
+    with patch("stuc.campaign.CAMPAIGNS_DIR", tmp_path):
+        original = Campaign(
+            name="create-test",
+            mode="create",
+            orgs=["OrgA"],
+            file_glob=".github/dependabot.yml",
+            prompt="Create a Dependabot config",
+            branch="stuc/create-test",
+            commit_msg="ci: add dependabot",
+            pr_title="Add Dependabot",
+            pr_body="Automated.",
+        )
+        original.save()
+
+        loaded = Campaign.load("create-test")
+        assert loaded.mode == "create"
+        assert loaded.prompt == "Create a Dependabot config"
+        assert loaded.file_glob == ".github/dependabot.yml"
+        assert loaded.find == ""
+        assert loaded.replace == ""
+
+
 def test_campaign_backward_compat(tmp_path):
     """Old YAML files without mode field load as regex mode."""
     import yaml

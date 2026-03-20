@@ -1,11 +1,11 @@
 ---
 name: stuc
-description: Fleet-wide find-and-replace across GitHub org repos. Use when the user wants to make the same text change across many repositories in a GitHub org - like bumping action versions, updating URLs, renaming packages, or migrating config patterns. Supports both regex and LLM-powered (claude) transformations.
+description: Fleet-wide find-and-replace across GitHub org repos. Use when the user wants to make the same text change across many repositories in a GitHub org - like bumping action versions, updating URLs, renaming packages, migrating config patterns, or adding new files to repos that don't have them. Supports regex, LLM-powered (claude) transformations, and file creation mode.
 ---
 
 # stuc - fleet-wide repo updates
 
-You are helping the user run a multi-repo campaign using the `stuc` CLI. stuc supports two modes: **regex** (deterministic find-and-replace) and **llm** (context-aware transformations via `claude -p`).
+You are helping the user run a multi-repo campaign using the `stuc` CLI. stuc supports three modes: **regex** (deterministic find-and-replace), **llm** (context-aware transformations via `claude -p`), and **create** (add new files to repos that don't have them).
 
 ## Prerequisite check
 
@@ -17,7 +17,7 @@ gh auth status
 
 If this fails, stop and tell the user to run `gh auth login` first.
 
-For LLM mode, also verify the `claude` CLI is available:
+For LLM/create mode, also verify the `claude` CLI is available:
 
 ```bash
 claude --version
@@ -66,8 +66,21 @@ stuc init <campaign-name> \
   --pr-title "<PR title>"
 ```
 
-Key details for both modes:
-- `--file-glob` uses fnmatch syntax: `".github/workflows/*.yml"`, `"**/*.toml"`
+**Create mode** (add new files to repos that don't have them):
+
+```bash
+stuc init <campaign-name> \
+  --mode create \
+  --org <github-org> \
+  --file-glob "<exact-file-path>" \
+  --prompt "<instruction-for-claude-to-generate-file>" \
+  --branch "stuc/<campaign-name>" \
+  --commit-msg "<conventional-commit-message>" \
+  --pr-title "<PR title>"
+```
+
+Key details for all modes:
+- `--file-glob` uses fnmatch syntax: `".github/workflows/*.yml"`, `"**/*.toml"` (create mode: must be an exact path, no wildcards)
 - `--org` can be repeated: `--org OrgA --org OrgB`
 - `--exclude-repo` can be repeated: `--exclude-repo org/repo1 --exclude-repo org/repo2`
 - `--issue-repo <org/repo>` creates a tracking issue in that repo (falls back to `stuc config issue_repo`)
@@ -81,6 +94,12 @@ LLM mode details:
 - `--prompt` is the instruction passed to `claude -p` for each file
 - `--context-file` (optional) path to a file with extra context included in the LLM prompt
 - `--validation` (optional) shell command to validate each transformed file (runs during `apply`)
+
+Create mode details:
+- `--file-glob` must be an exact file path (no wildcards), e.g. `.github/dependabot.yml`
+- `--prompt` is the instruction passed to `claude -p` to generate the file content
+- Discovery is inverted: stuc lists org repos and checks which ones are **missing** the target file
+- `--context-file` and `--validation` work the same as in LLM mode
 
 ### 2. Plan - preview changes
 
@@ -130,7 +149,7 @@ stuc <cmd> --help                      # help for a specific subcommand
 
 Based on what the user wants:
 
-1. **Pick the right mode**: If the change is a deterministic text substitution (version bumps, URL renames, config values), use **regex** mode. If the change needs understanding of context (refactoring, adding sections, rewriting based on guidelines), use **llm** mode.
+1. **Pick the right mode**: If the change is a deterministic text substitution (version bumps, URL renames, config values), use **regex** mode. If the change needs understanding of context (refactoring, adding sections, rewriting based on guidelines), use **llm** mode. If the user wants to add a new file to repos that don't have it (Dependabot config, LICENSE, SECURITY.md, CI workflows), use **create** mode.
 2. **Regex mode**: Translate the user's description into a `--find` regex and `--replace` string. Test the regex mentally against likely file content. If unsure, ask.
 3. **LLM mode**: Write a clear `--prompt` instruction. Pick a `--search-term` that will find the right files via GitHub code search. If the user has a reference document (style guide, spec, etc.), use `--context-file`.
 4. **Figure out the file glob**: What files would contain this text? Workflow files, config files, source code?
@@ -138,7 +157,7 @@ Based on what the user wants:
 6. **Use conventional commits**: `chore:`, `fix:`, `build:` etc. for the commit message
 7. **Run each step in order**: init, plan (review with user), apply, status
 
-**LLM mode caveats**: Each file requires a `claude -p` call, so `plan` is slower. LLM output is non-deterministic - the diff at `plan` time shows the direction, but `apply` may produce slightly different output. Review carefully.
+**LLM/create mode caveats**: Each file requires a `claude -p` call, so `plan` is slower. LLM output is non-deterministic - the diff at `plan` time shows the direction, but `apply` may produce slightly different output. Review carefully.
 
 ## Regex design for GitHub search
 

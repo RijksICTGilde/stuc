@@ -52,6 +52,17 @@ def test_format_issue_body_llm_mode():
     assert "Find" not in body
 
 
+def test_format_issue_body_create_mode():
+    campaign = _make_campaign(mode="create", find="", replace="", prompt="Create a Dependabot config")
+    body = format_issue_body(campaign)
+
+    assert "| Mode | `create` |" in body
+    assert "| File glob |" in body
+    assert "| Prompt | Create a Dependabot config |" in body
+    assert "Find" not in body
+    assert "Replace" not in body
+
+
 def test_format_issue_body_with_prs():
     campaign = _make_campaign(prs={"TestOrg/repo1": "https://github.com/TestOrg/repo1/pull/42"})
     body = format_issue_body(campaign)

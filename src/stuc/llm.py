@@ -27,13 +27,20 @@ def transform_file(content: str, prompt: str, context: str = "", file_path: str 
             "The 'claude' CLI is not installed or not on PATH. Install it from https://claude.ai/code"
         )
 
-    parts = [
-        "You are a code transformation tool. Output ONLY the complete transformed file content.",
-        "No explanations, no markdown code fences, no commentary.",
-    ]
+    if content:
+        parts = [
+            "You are a code transformation tool. Output ONLY the complete transformed file content.",
+            "No explanations, no markdown code fences, no commentary.",
+        ]
+    else:
+        parts = [
+            "You are a code generation tool. Output ONLY the complete file content.",
+            "No explanations, no markdown code fences, no commentary.",
+        ]
     if file_path:
         parts.append(f"\nFile: {file_path}")
-    parts.append(f"\n<file>\n{content}\n</file>")
+    if content:
+        parts.append(f"\n<file>\n{content}\n</file>")
     if context:
         parts.append(f"\n<context>\n{context}\n</context>")
     parts.append(f"\nInstruction: {prompt}")

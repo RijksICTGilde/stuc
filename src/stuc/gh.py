@@ -133,6 +133,12 @@ def update_issue(issue_url: str, body: str) -> None:
     run(["issue", "edit", issue_url, "--body", body])
 
 
+def file_exists(repo: str, path: str) -> bool:
+    """Check if a file exists in a repo via the GitHub API."""
+    result = run(["api", f"repos/{repo}/contents/{path}"], check=False)
+    return bool(result)
+
+
 def pr_list(repo: str, head: str | None = None, state: str = "all") -> list[dict]:
     """List PRs for a repo, optionally filtered by head branch."""
     args = [

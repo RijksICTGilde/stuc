@@ -96,7 +96,7 @@ def _apply_to_repo(campaign: Campaign, repo: str, files: list[dict], auto_merge:
 
         # Apply changes
         changed = False
-        if campaign.mode == "llm":
+        if campaign.mode in ("create", "llm"):
             from stuc.llm import transform_file, validate_output
 
             context = ""
@@ -107,17 +107,29 @@ def _apply_to_repo(campaign: Campaign, repo: str, files: list[dict], auto_merge:
 
             for f in files:
                 file_path = repo_dir / f["path"]
-                if not file_path.exists():
+                if campaign.mode == "create":
+                    if file_path.exists():
+                        continue  # Safety: don't overwrite existing files
+                    file_path.parent.mkdir(parents=True, exist_ok=True)
+                    original = ""
+                else:
+                    if not file_path.exists():
+                        continue
+                    original = file_path.read_text()
+
+                new_content = transform_file(original, campaign.prompt, context=context, file_path=f["path"])
+                if campaign.mode == "create":
+                    if not new_content.strip():
+                        continue
+                elif new_content.strip() == original.strip():
                     continue
-                content = file_path.read_text()
-                new_content = transform_file(content, campaign.prompt, context=context, file_path=f["path"])
-                if new_content.strip() != content.strip():
-                    file_path.write_text(new_content)
-                    changed = True
-                    if campaign.validation:
-                        passed, err = validate_output(campaign.validation, f["path"], repo_dir)
-                        if not passed:
-                            raise RuntimeError(f"Validation failed for {f['path']}: {err}")
+
+                file_path.write_text(new_content)
+                changed = True
+                if campaign.validation:
+                    passed, err = validate_output(campaign.validation, f["path"], repo_dir)
+                    if not passed:
+                        raise RuntimeError(f"Validation failed for {f['path']}: {err}")
         else:
             pattern = re.compile(campaign.find)
             for f in files:

@@ -3,7 +3,7 @@
 from unittest.mock import patch
 
 from stuc.campaign import Campaign
-from stuc.discover import _extract_search_term, discover_repos
+from stuc.discover import _extract_search_term, _show_inline_diff, discover_repos, preview_changes
 
 
 def test_extract_search_term_action_ref():
@@ -69,3 +69,95 @@ def test_discover_repos_llm_uses_search_term():
     mock_search.assert_called_once_with("README", owner="TestOrg")
     assert len(results) == 1
     assert results[0]["repo"] == "TestOrg/repo1"
+
+
+def _make_create_campaign(**overrides):
+    defaults = {
+        "name": "create-test",
+        "mode": "create",
+        "orgs": ["TestOrg"],
+        "file_glob": ".github/dependabot.yml",
+        "prompt": "Create a Dependabot config",
+        "branch": "stuc/test",
+        "commit_msg": "ci: add dependabot",
+        "pr_title": "Add Dependabot",
+        "pr_body": "test",
+    }
+    defaults.update(overrides)
+    return Campaign(**defaults)
+
+
+def test_discover_repos_create_finds_missing():
+    """Create mode returns repos where the target file is missing."""
+    campaign = _make_create_campaign()
+
+    with (
+        patch("stuc.discover.gh.list_org_repos", return_value=["TestOrg/repo1", "TestOrg/repo2"]),
+        patch("stuc.discover.gh.file_exists", side_effect=[False, True]),
+    ):
+        results = discover_repos(campaign)
+
+    assert len(results) == 1
+    assert results[0]["repo"] == "TestOrg/repo1"
+    assert results[0]["path"] == ".github/dependabot.yml"
+
+
+def test_discover_repos_create_skips_existing():
+    """Create mode skips repos that already have the target file."""
+    campaign = _make_create_campaign()
+
+    with (
+        patch("stuc.discover.gh.list_org_repos", return_value=["TestOrg/repo1"]),
+        patch("stuc.discover.gh.file_exists", return_value=True),
+    ):
+        results = discover_repos(campaign)
+
+    assert results == []
+
+
+def test_discover_repos_create_respects_excludes():
+    """Create mode respects the exclude_repos list."""
+    campaign = _make_create_campaign(exclude_repos=["TestOrg/repo1"])
+
+    with (
+        patch("stuc.discover.gh.list_org_repos", return_value=["TestOrg/repo1", "TestOrg/repo2"]),
+        patch("stuc.discover.gh.file_exists", return_value=False) as mock_exists,
+    ):
+        results = discover_repos(campaign)
+
+    # file_exists should only be called for repo2 (repo1 is excluded)
+    mock_exists.assert_called_once_with("TestOrg/repo2", ".github/dependabot.yml")
+    assert len(results) == 1
+    assert results[0]["repo"] == "TestOrg/repo2"
+
+
+def test_show_inline_diff_new_file():
+    """Empty before shows all-green additions, capped at 20 lines."""
+    import io
+
+    from rich.console import Console
+
+    content = "\n".join(f"line {i}" for i in range(25))
+    buf = io.StringIO()
+    with patch("stuc.discover.console", Console(file=buf)):
+        _show_inline_diff("", content)
+    output = buf.getvalue()
+    # Should show first 20 lines as additions, plus "... 5 more lines"
+    assert "line 0" in output
+    assert "line 19" in output
+    assert "line 20" not in output
+    assert "5 more lines" in output
+
+
+def test_preview_changes_create_calls_llm():
+    """Create-mode preview calls transform_file with empty content."""
+    campaign = _make_create_campaign()
+    hits = [{"repo": "TestOrg/repo1", "path": ".github/dependabot.yml"}]
+
+    with patch("stuc.llm.transform_file", return_value="generated: yaml content\n") as mock_tf:
+        result = preview_changes(campaign, hits)
+
+    mock_tf.assert_called_once_with("", "Create a Dependabot config", context="", file_path=".github/dependabot.yml")
+    assert "TestOrg/repo1" in result
+    assert result["TestOrg/repo1"][0]["before"] == ""
+    assert "generated" in result["TestOrg/repo1"][0]["after"]

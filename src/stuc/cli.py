@@ -35,6 +35,16 @@ examples:
     --commit-msg "docs: add license section" \\
     --pr-title "Add license section to README"
 
+  # Create mode: Add a new file to repos that don't have it
+  stuc init add-dependabot \\
+    --mode create \\
+    --org MyOrg \\
+    --file-glob ".github/dependabot.yml" \\
+    --prompt "Create a Dependabot config that checks for GitHub Actions and pip updates weekly" \\
+    --branch "stuc/add-dependabot" \\
+    --commit-msg "ci: add Dependabot config" \\
+    --pr-title "Add Dependabot configuration"
+
   # Preview what the campaign would change
   stuc plan bump-actions
 
@@ -60,7 +70,7 @@ examples:
 prerequisites:
   - The 'gh' CLI must be installed and authenticated (gh auth status)
   - You need push access to target repos (to create branches and PRs)
-  - For LLM mode: the 'claude' CLI must be installed (claude.ai/code)
+  - For LLM/create mode: the 'claude' CLI must be installed (claude.ai/code)
 """
 
 
@@ -85,9 +95,10 @@ def main() -> None:
     p_init.add_argument("name", help="Campaign name (used as filename and identifier, e.g. 'bump-actions-v2')")
     p_init.add_argument(
         "--mode",
-        choices=["regex", "llm"],
+        choices=["regex", "llm", "create"],
         default="regex",
-        help="Campaign mode: 'regex' for find-and-replace, 'llm' for claude-powered transformation (default: regex)",
+        help="Campaign mode: 'regex' for find-and-replace, 'llm' for claude-powered transformation, "
+        "'create' for adding new files to repos that don't have them (default: regex)",
     )
     p_init.add_argument(
         "--org",
@@ -113,19 +124,23 @@ def main() -> None:
         help="Replacement string (required for regex mode). Use \\1, \\2 for backreferences "
         "(e.g. 'MyOrg/actions/\\1@v2')",
     )
-    p_init.add_argument("--prompt", default="", help="LLM instruction for transforming files (required for llm mode)")
+    p_init.add_argument(
+        "--prompt",
+        default="",
+        help="LLM instruction for transforming or generating files (required for llm/create mode)",
+    )
     p_init.add_argument(
         "--search-term", default="", help="Literal search term for gh search code (required for llm mode)"
     )
     p_init.add_argument(
         "--context-file",
         default="",
-        help="Path to a file with additional context for the LLM (optional, llm mode only)",
+        help="Path to a file with additional context for the LLM (optional, llm/create mode)",
     )
     p_init.add_argument(
         "--validation",
         default="",
-        help="Shell command to validate LLM output (optional, llm mode only). The file path is available as $FILE",
+        help="Shell command to validate LLM output (optional, llm/create mode). The file path is available as $FILE",
     )
     p_init.add_argument(
         "--branch", required=True, help="Git branch name to create in each repo (e.g. 'stuc/bump-actions-v2')"
@@ -289,6 +304,19 @@ def _cmd_init(args: argparse.Namespace) -> None:
         if args.context_file and not Path(args.context_file).exists():
             print(f"Error: Context file not found: {args.context_file}", file=sys.stderr)
             sys.exit(1)
+    elif args.mode == "create":
+        if not args.prompt:
+            print("Error: --prompt is required for create mode.", file=sys.stderr)
+            sys.exit(1)
+        if any(c in args.file_glob for c in "*?["):
+            print(
+                "Error: --file-glob must be an exact file path for create mode (no wildcards).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if args.context_file and not Path(args.context_file).exists():
+            print(f"Error: Context file not found: {args.context_file}", file=sys.stderr)
+            sys.exit(1)
 
     campaign = Campaign(
         name=args.name,
@@ -329,7 +357,13 @@ def _cmd_list() -> None:
             c = Campaign.load(name)
             orgs = ", ".join(c.orgs)
             pr_count = len(c.prs)
-            if c.mode == "llm":
+            if c.mode == "create":
+                prompt_display = c.prompt[:50] + ("..." if len(c.prompt) > 50 else "")
+                console.print(
+                    f"  [cyan]{name}[/cyan]  mode=[dim]create[/dim]  orgs=[dim]{orgs}[/dim]"
+                    f"  file=[dim]{c.file_glob}[/dim]  prompt=[dim]{prompt_display}[/dim]  PRs=[dim]{pr_count}[/dim]"
+                )
+            elif c.mode == "llm":
                 prompt_display = c.prompt[:50] + ("..." if len(c.prompt) > 50 else "")
                 console.print(
                     f"  [cyan]{name}[/cyan]  mode=[dim]llm[/dim]  orgs=[dim]{orgs}[/dim]"

@@ -39,10 +39,16 @@ def _extract_search_term(pattern: str) -> str:
 
 
 def discover_repos(campaign: Campaign) -> list[dict]:
-    """Find all repos with files matching the campaign's glob and regex.
+    """Find target repos for a campaign.
+
+    For regex/llm modes: finds repos with files matching the glob and content.
+    For create mode: finds repos missing the target file.
 
     Returns list of {repo, path} dicts.
     """
+    if campaign.mode == "create":
+        return _discover_repos_create(campaign)
+
     results = []
 
     for org in campaign.orgs:
@@ -103,6 +109,9 @@ def preview_changes(campaign: Campaign, hits: list[dict]) -> dict[str, list[dict
 
     Returns {repo: [{path, before, after}]}.
     """
+    if campaign.mode == "create":
+        return _preview_changes_create(campaign, hits)
+
     if campaign.mode == "llm":
         return _preview_changes_llm(campaign, hits)
 
@@ -204,25 +213,39 @@ def _preview_changes_llm(campaign: Campaign, hits: list[dict]) -> dict[str, list
 def show_plan(campaign: Campaign) -> dict[str, list[dict]]:
     """Run discovery and show the plan."""
     console.print(f"\n[bold cyan]Campaign:[/bold cyan] {campaign.name}")
-    if campaign.mode == "llm":
+    if campaign.mode == "create":
+        console.print("[bold cyan]Mode:[/bold cyan] create")
+        console.print(f"[bold cyan]Target file:[/bold cyan] {campaign.file_glob}")
+        console.print(f"[bold cyan]Prompt:[/bold cyan] {campaign.prompt}")
+    elif campaign.mode == "llm":
         console.print("[bold cyan]Mode:[/bold cyan] llm")
         console.print(f"[bold cyan]Prompt:[/bold cyan] {campaign.prompt}")
         console.print(f"[bold cyan]Search term:[/bold cyan] {campaign.search_term}")
+        console.print(f"[bold cyan]Files:[/bold cyan] {campaign.file_glob}")
     else:
         console.print(f"[bold cyan]Pattern:[/bold cyan] {campaign.find} → {campaign.replace}")
-    console.print(f"[bold cyan]Files:[/bold cyan] {campaign.file_glob}")
+        console.print(f"[bold cyan]Files:[/bold cyan] {campaign.file_glob}")
     console.print()
 
     hits = discover_repos(campaign)
     if not hits:
-        console.print("[yellow]No matching files found.[/yellow]")
+        if campaign.mode == "create":
+            console.print("[yellow]No repos missing the target file.[/yellow]")
+        else:
+            console.print("[yellow]No matching files found.[/yellow]")
         return {}
 
-    console.print(f"Found [bold]{len(hits)}[/bold] matching files across repos.\n")
+    if campaign.mode == "create":
+        console.print(f"Found [bold]{len(hits)}[/bold] repos missing the target file.\n")
+    else:
+        console.print(f"Found [bold]{len(hits)}[/bold] matching files across repos.\n")
 
     changes = preview_changes(campaign, hits)
     if not changes:
-        console.print("[yellow]No actual changes needed - all files already match the replacement.[/yellow]")
+        if campaign.mode == "create":
+            console.print("[yellow]No file content could be generated.[/yellow]")
+        else:
+            console.print("[yellow]No actual changes needed - all files already match the replacement.[/yellow]")
         return {}
 
     # Show summary table
@@ -247,6 +270,17 @@ def show_plan(campaign: Campaign) -> dict[str, list[dict]]:
 
 def _show_inline_diff(before: str, after: str) -> None:
     """Show a compact inline diff of changed lines."""
+    if not before:
+        # New file: show all lines as additions, cap at 20 lines
+        after_lines = after.splitlines()
+        shown = after_lines[:20]
+        for line in shown:
+            console.print(f"    [green]+ {line}[/green]")
+        remaining = len(after_lines) - len(shown)
+        if remaining > 0:
+            console.print(f"    [dim]... {remaining} more lines[/dim]")
+        return
+
     before_lines = before.splitlines()
     after_lines = after.splitlines()
 
@@ -254,3 +288,70 @@ def _show_inline_diff(before: str, after: str) -> None:
         if b != a:
             console.print(f"    [red]- {b.strip()}[/red]")
             console.print(f"    [green]+ {a.strip()}[/green]")
+
+
+def _discover_repos_create(campaign: Campaign) -> list[dict]:
+    """Find repos that are missing the target file."""
+    results = []
+
+    for org in campaign.orgs:
+        console.print(f"[bold]Listing repos in org: {org}[/bold]")
+        try:
+            repos = gh.list_org_repos(org)
+        except SystemExit:
+            console.print(f"[yellow]Warning: could not list repos for {org}[/yellow]")
+            continue
+
+        for repo in repos:
+            if repo in campaign.exclude_repos:
+                continue
+            if campaign.repos and repo not in campaign.repos:
+                continue
+
+            console.print(f"  [dim]Checking {repo}...[/dim]")
+            if not gh.file_exists(repo, campaign.file_glob):
+                results.append({"repo": repo, "path": campaign.file_glob})
+
+    return results
+
+
+def _preview_changes_create(campaign: Campaign, hits: list[dict]) -> dict[str, list[dict]]:
+    """Preview file content to be created using LLM generation."""
+    from stuc.llm import transform_file
+
+    context = ""
+    if campaign.context_file:
+        from pathlib import Path
+
+        ctx_path = Path(campaign.context_file)
+        if ctx_path.exists():
+            context = ctx_path.read_text()
+
+    console.print(f"[bold]Generating content for {len(hits)} repos via LLM...[/bold]")
+    by_repo: dict[str, list[dict]] = {}
+
+    for i, hit in enumerate(hits, 1):
+        repo = hit["repo"]
+        path = hit["path"]
+        console.print(f"  [{i}/{len(hits)}] {repo}/{path}")
+
+        try:
+            new_content = transform_file("", campaign.prompt, context=context, file_path=path)
+        except Exception as e:
+            console.print(f"[red]LLM generation failed for {repo}/{path}: {e}[/red]")
+            continue
+
+        if not new_content.strip():
+            continue
+
+        if repo not in by_repo:
+            by_repo[repo] = []
+        by_repo[repo].append(
+            {
+                "path": path,
+                "before": "",
+                "after": new_content,
+            }
+        )
+
+    return by_repo
