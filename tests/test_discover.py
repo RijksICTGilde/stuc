@@ -3,7 +3,7 @@
 from unittest.mock import patch
 
 from stuc.campaign import Campaign
-from stuc.discover import _extract_search_term, discover_repos, _discover_repos_create
+from stuc.discover import _extract_search_term, discover_repos
 
 
 def test_extract_search_term_action_ref():
