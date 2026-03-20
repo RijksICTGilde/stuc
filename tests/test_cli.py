@@ -4,7 +4,10 @@ import subprocess
 import sys
 from unittest.mock import patch
 
+import pytest
+
 from stuc.campaign import Campaign
+from stuc.cli import _validate_campaign
 
 
 def test_init_creates_campaign(tmp_path):
@@ -235,3 +238,44 @@ def test_cli_help():
     )
     assert result.returncode == 0
     assert "stuc" in result.stdout
+
+
+class TestValidateCampaign:
+    """Direct unit tests for _validate_campaign."""
+
+    def test_regex_requires_find_and_replace(self):
+        with pytest.raises(SystemExit):
+            _validate_campaign("regex", "*.yml", "", "", "", "", "")
+
+    def test_regex_rejects_invalid_regex(self):
+        with pytest.raises(SystemExit):
+            _validate_campaign("regex", "*.yml", "[invalid", "x", "", "", "")
+
+    def test_regex_valid_passes(self):
+        _validate_campaign("regex", "*.yml", "foo", "bar", "", "", "")
+
+    def test_llm_requires_prompt(self):
+        with pytest.raises(SystemExit):
+            _validate_campaign("llm", "*.yml", "", "", "", "term", "")
+
+    def test_llm_requires_search_term(self):
+        with pytest.raises(SystemExit):
+            _validate_campaign("llm", "*.yml", "", "", "do something", "", "")
+
+    def test_llm_valid_passes(self):
+        _validate_campaign("llm", "*.yml", "", "", "do something", "term", "")
+
+    def test_create_requires_prompt(self):
+        with pytest.raises(SystemExit):
+            _validate_campaign("create", "file.yml", "", "", "", "", "")
+
+    def test_create_rejects_wildcards(self):
+        with pytest.raises(SystemExit):
+            _validate_campaign("create", "*.yml", "", "", "create it", "", "")
+
+    def test_create_valid_passes(self):
+        _validate_campaign("create", "file.yml", "", "", "create it", "", "")
+
+    def test_empty_file_glob_fails(self):
+        with pytest.raises(SystemExit):
+            _validate_campaign("regex", "", "foo", "bar", "", "", "")

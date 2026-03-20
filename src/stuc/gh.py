@@ -3,25 +3,69 @@
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
+MAX_RETRIES = 3
+INITIAL_BACKOFF = 5  # seconds
 
-def run(args: list[str], capture: bool = True, check: bool = True, cwd: str | Path | None = None) -> str:
-    """Run a gh CLI command and return stdout."""
-    cmd = ["gh"] + args
-    result = subprocess.run(
-        cmd,
+
+def _is_rate_limit_error(stderr: str) -> bool:
+    """Check if a gh CLI error is a GitHub rate limit (HTTP 403/429)."""
+    return "rate limit" in stderr.lower() or "HTTP 429" in stderr
+
+
+def _exec(args: list[str], capture: bool = True, cwd: str | Path | None = None) -> subprocess.CompletedProcess[str]:
+    """Execute a gh CLI command and return the CompletedProcess."""
+    return subprocess.run(
+        ["gh"] + args,
         capture_output=capture,
         text=True,
         check=False,
         cwd=cwd,
     )
-    if check and result.returncode != 0:
-        print(f"gh command failed: {' '.join(cmd)}", file=sys.stderr)
+
+
+def _check_result(result: subprocess.CompletedProcess[str], args: list[str]) -> None:
+    """Raise SystemExit with error details if the command failed."""
+    if result.returncode != 0:
+        print(f"gh command failed: gh {' '.join(args)}", file=sys.stderr)
         if result.stderr:
             print(result.stderr, file=sys.stderr)
         raise SystemExit(1)
+
+
+def run(args: list[str], capture: bool = True, check: bool = True, cwd: str | Path | None = None) -> str:
+    """Run a gh CLI command and return stdout."""
+    result = _exec(args, capture=capture, cwd=cwd)
+    if check:
+        _check_result(result, args)
     return result.stdout.strip() if capture else ""
+
+
+def _run_with_retry(args: list[str], capture: bool = True, check: bool = True, cwd: str | Path | None = None) -> str:
+    """Run a gh CLI command with retry on rate limit errors. Use for read-only operations."""
+    for attempt in range(MAX_RETRIES):
+        result = _exec(args, capture=capture, cwd=cwd)
+        if result.returncode == 0:
+            return result.stdout.strip() if capture else ""
+
+        if _is_rate_limit_error(result.stderr):
+            wait = INITIAL_BACKOFF * (2**attempt)
+            print(
+                f"Rate limited by GitHub. Waiting {wait}s before retry ({attempt + 1}/{MAX_RETRIES})...",
+                file=sys.stderr,
+            )
+            time.sleep(wait)
+            continue
+
+        if check:
+            _check_result(result, args)
+        return result.stdout.strip() if capture else ""
+
+    # Exhausted retries
+    print(f"gh command failed after {MAX_RETRIES} retries (rate limited): gh {' '.join(args)}", file=sys.stderr)
+    raise SystemExit(1)
 
 
 def run_json(args: list[str], cwd: str | Path | None = None) -> dict | list:
@@ -41,7 +85,7 @@ def search_code(query: str, owner: str, limit: int = 1000) -> list[dict]:
         "--json",
         "repository,path",
     ]
-    output = run(args)
+    output = _run_with_retry(args)
     if not output:
         return []
     return json.loads(output)
@@ -49,7 +93,7 @@ def search_code(query: str, owner: str, limit: int = 1000) -> list[dict]:
 
 def list_org_repos(org: str, limit: int = 1000) -> list[str]:
     """List all repos in an org. Returns list of full repo names (org/repo)."""
-    output = run(
+    output = _run_with_retry(
         [
             "repo",
             "list",
@@ -65,6 +109,14 @@ def list_org_repos(org: str, limit: int = 1000) -> list[str]:
         return []
     repos = json.loads(output)
     return [r["nameWithOwner"] for r in repos]
+
+
+def list_user_orgs() -> list[str]:
+    """List GitHub orgs the authenticated user belongs to. Returns list of org logins."""
+    output = run(["org", "list"], check=False)
+    if not output:
+        return []
+    return [line.strip() for line in output.splitlines() if line.strip()]
 
 
 def clone_repo(repo: str, dest: Path, shallow: bool = True) -> None:
@@ -96,7 +148,7 @@ def create_pr(title: str, body: str, branch: str, base: str = "main", cwd: str |
 
 def pr_status(repo: str, branch: str) -> dict | None:
     """Get PR status for a branch. Returns dict with state, url, checks or None."""
-    output = run(
+    output = _run_with_retry(
         ["pr", "view", branch, "--repo", repo, "--json", "state,url,statusCheckRollup,mergeStateStatus"],
         check=False,
     )
@@ -112,7 +164,7 @@ def enable_auto_merge(pr_url: str) -> None:
 
 def get_default_branch(repo: str) -> str:
     """Get the default branch name for a repo."""
-    output = run(["repo", "view", repo, "--json", "defaultBranchRef"])
+    output = _run_with_retry(["repo", "view", repo, "--json", "defaultBranchRef"])
     data = json.loads(output)
     return data.get("defaultBranchRef", {}).get("name", "main")
 
@@ -124,7 +176,7 @@ def create_issue(repo: str, title: str, body: str) -> str:
 
 def get_issue(issue_url: str) -> dict:
     """Get issue data (body, title, number, url) from a GitHub issue URL."""
-    output = run(["issue", "view", issue_url, "--json", "body,title,number,url"])
+    output = _run_with_retry(["issue", "view", issue_url, "--json", "body,title,number,url"])
     return json.loads(output)
 
 
@@ -135,7 +187,7 @@ def update_issue(issue_url: str, body: str) -> None:
 
 def file_exists(repo: str, path: str) -> bool:
     """Check if a file exists in a repo via the GitHub API."""
-    result = run(["api", f"repos/{repo}/contents/{path}"], check=False)
+    result = _run_with_retry(["api", f"repos/{repo}/contents/{path}"], check=False)
     return bool(result)
 
 
@@ -153,7 +205,7 @@ def pr_list(repo: str, head: str | None = None, state: str = "all") -> list[dict
     ]
     if head:
         args += ["--head", head]
-    output = run(args, check=False)
+    output = _run_with_retry(args, check=False)
     if not output:
         return []
     return json.loads(output)
