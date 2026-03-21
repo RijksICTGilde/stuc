@@ -48,9 +48,11 @@ def _build_search_query(search_term: str, file_glob: str) -> str:
 
     # Add path qualifier from file glob
     # GitHub supports path: with limited glob (e.g. path:.github/workflows path:*.yml)
+    # Skip path: qualifier when search term contains slashes — GitHub code search
+    # doesn't combine these well and returns zero results.
     if file_glob:
         # Extract directory prefix (everything before the last wildcard segment)
-        if "/" in file_glob:
+        if "/" in file_glob and "/" not in search_term:
             dir_part = file_glob.rsplit("/", 1)[0]
             # Only use directory part if it's a literal path (no wildcards)
             if not any(c in dir_part for c in "*?["):

@@ -64,6 +64,12 @@ def test_build_search_query_no_glob():
     assert _build_search_query("foo", "") == "foo"
 
 
+def test_build_search_query_slash_in_search_term():
+    """Skip path: qualifier when search term contains slashes."""
+    result = _build_search_query("aquasecurity/trivy-action", ".github/workflows/*.yml")
+    assert result == "aquasecurity/trivy-action extension:yml"
+
+
 def test_discover_repos_llm_uses_search_term():
     """LLM mode uses campaign.search_term instead of extracting from find pattern."""
     campaign = Campaign(
