@@ -83,6 +83,17 @@ def format_issue_body(campaign: Campaign) -> str:
     parts.append(f"```yaml\n{STUC_DATA_MARKER}\n{yaml_str}```")
     parts.append("</details>")
     parts.append("")
+
+    # Usage hints
+    parts.append("## Usage\n")
+    parts.append("```bash")
+    parts.append("uv tool install git+https://github.com/RijksICTGilde/stuc.git")
+    if campaign.issue_url:
+        parts.append(f"stuc status {campaign.issue_url} --refresh")
+    else:
+        parts.append(f"stuc status {campaign.name} --refresh")
+    parts.append("```")
+    parts.append("")
     parts.append("---")
     parts.append(STUC_FOOTER)
 
