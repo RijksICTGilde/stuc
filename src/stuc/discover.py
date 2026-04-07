@@ -39,30 +39,19 @@ def _extract_search_term(pattern: str) -> str:
 
 
 def _build_search_query(search_term: str, file_glob: str) -> str:
-    """Build a GitHub code search query with path qualifier from the file glob.
+    """Build a GitHub code search query with extension qualifier from the file glob.
 
-    GitHub code search supports 'path:' to filter by file path and 'extension:'
-    for file types. Adding these reduces result count and API calls.
+    GitHub code search supports 'extension:' for file types. We skip the 'path:'
+    qualifier because GitHub code search combines it unreliably with content terms,
+    often returning zero results. File path filtering is done client-side via
+    fnmatch instead (see discover_repos).
     """
     parts = [search_term]
 
-    # Add path qualifier from file glob
-    # GitHub supports path: with limited glob (e.g. path:.github/workflows path:*.yml)
-    # Skip path: qualifier when search term contains slashes — GitHub code search
-    # doesn't combine these well and returns zero results.
-    if file_glob:
-        # Extract directory prefix (everything before the last wildcard segment)
-        if "/" in file_glob and "/" not in search_term:
-            dir_part = file_glob.rsplit("/", 1)[0]
-            # Only use directory part if it's a literal path (no wildcards)
-            if not any(c in dir_part for c in "*?["):
-                parts.append(f"path:{dir_part}")
-
-        # Extract extension for filename filtering
-        if "." in file_glob:
-            ext = file_glob.rsplit(".", 1)[-1]
-            if ext and not any(c in ext for c in "*?["):
-                parts.append(f"extension:{ext}")
+    if file_glob and "." in file_glob:
+        ext = file_glob.rsplit(".", 1)[-1]
+        if ext and not any(c in ext for c in "*?["):
+            parts.append(f"extension:{ext}")
 
     return " ".join(parts)
 

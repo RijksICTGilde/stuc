@@ -44,9 +44,9 @@ def test_extract_search_term_combined_alternation():
 
 
 def test_build_search_query_with_dir_and_ext():
-    """Adds path: and extension: qualifiers from file glob."""
+    """Adds extension: qualifier from file glob (path: is skipped for reliability)."""
     result = _build_search_query("my-action", ".github/workflows/*.yml")
-    assert result == "my-action path:.github/workflows extension:yml"
+    assert result == "my-action extension:yml"
 
 
 def test_build_search_query_no_dir():
@@ -55,8 +55,8 @@ def test_build_search_query_no_dir():
 
 
 def test_build_search_query_exact_path():
-    """Exact path (no wildcards) adds path: for the directory."""
-    assert _build_search_query("dependabot", ".github/dependabot.yml") == "dependabot path:.github extension:yml"
+    """Exact path uses extension: only (path: is skipped for reliability)."""
+    assert _build_search_query("dependabot", ".github/dependabot.yml") == "dependabot extension:yml"
 
 
 def test_build_search_query_no_glob():
