@@ -84,8 +84,8 @@ def discover_repos(campaign: Campaign) -> list[dict]:
         console.print(f"[bold]Searching org: {org}[/bold]")
 
         # GitHub code search is literal text, not regex.
-        # For LLM mode, use the explicit search term; for regex, extract from pattern.
-        search_term = campaign.search_term if campaign.mode == "llm" else _extract_search_term(campaign.find)
+        # Use explicit search_term when provided; otherwise extract from the find pattern.
+        search_term = campaign.search_term or _extract_search_term(campaign.find)
 
         # Add path qualifier to narrow search server-side and reduce API calls
         query = _build_search_query(search_term, campaign.file_glob)
