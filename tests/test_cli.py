@@ -72,9 +72,9 @@ def test_cli_init_regex_requires_find_replace():
             "--branch",
             "b",
             "--commit-msg",
-            "c",
+            "chore: test",
             "--pr-title",
-            "t",
+            "chore: test",
         ],
         capture_output=True,
         text=True,
@@ -103,9 +103,9 @@ def test_cli_init_llm_requires_prompt():
             "--branch",
             "b",
             "--commit-msg",
-            "c",
+            "chore: test",
             "--pr-title",
-            "t",
+            "chore: test",
         ],
         capture_output=True,
         text=True,
@@ -134,9 +134,9 @@ def test_cli_init_llm_requires_search_term():
             "--branch",
             "b",
             "--commit-msg",
-            "c",
+            "chore: test",
             "--pr-title",
-            "t",
+            "chore: test",
         ],
         capture_output=True,
         text=True,
@@ -187,9 +187,9 @@ def test_cli_init_create_requires_prompt():
             "--branch",
             "b",
             "--commit-msg",
-            "c",
+            "chore: test",
             "--pr-title",
-            "t",
+            "chore: test",
         ],
         capture_output=True,
         text=True,
@@ -218,9 +218,9 @@ def test_cli_init_create_rejects_wildcards():
             "--branch",
             "b",
             "--commit-msg",
-            "c",
+            "chore: test",
             "--pr-title",
-            "t",
+            "chore: test",
         ],
         capture_output=True,
         text=True,
@@ -279,3 +279,17 @@ class TestValidateCampaign:
     def test_empty_file_glob_fails(self):
         with pytest.raises(SystemExit):
             _validate_campaign("regex", "", "foo", "bar", "", "", "")
+
+    def test_commit_msg_requires_conventional_prefix(self):
+        with pytest.raises(SystemExit):
+            _validate_campaign("regex", "*.yml", "foo", "bar", "", "", "", commit_msg="bump stuff")
+
+    def test_pr_title_requires_conventional_prefix(self):
+        with pytest.raises(SystemExit):
+            _validate_campaign("regex", "*.yml", "foo", "bar", "", "", "", pr_title="Bump stuff")
+
+    def test_conventional_prefix_accepted(self):
+        _validate_campaign("regex", "*.yml", "foo", "bar", "", "", "", commit_msg="chore: bump", pr_title="fix: thing")
+
+    def test_conventional_prefix_with_scope(self):
+        _validate_campaign("regex", "*.yml", "foo", "bar", "", "", "", commit_msg="fix(ci): bump")
