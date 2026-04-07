@@ -65,10 +65,35 @@ def _print_examples() -> None:
     console.print(Panel(text, title="Examples & Workflow", border_style="dim", expand=False))
 
 
+_CONVENTIONAL_PREFIXES = re.compile(r"^(fix|feat|chore|docs|style|refactor|perf|test|build|ci|revert)(\(.+\))?!?:")
+
+
 def _validate_campaign(
-    mode: str, file_glob: str, find: str, replace: str, prompt: str, search_term: str, context_file: str
+    mode: str,
+    file_glob: str,
+    find: str,
+    replace: str,
+    prompt: str,
+    search_term: str,
+    context_file: str,
+    commit_msg: str = "",
+    pr_title: str = "",
 ) -> None:
     """Validate campaign parameters. Raises SystemExit on error."""
+    if commit_msg and not _CONVENTIONAL_PREFIXES.match(commit_msg):
+        print(
+            f"Error: --commit-msg must start with a conventional commit prefix "
+            f"(e.g. fix:, feat:, chore:).\n  Got: {commit_msg!r}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    if pr_title and not _CONVENTIONAL_PREFIXES.match(pr_title):
+        print(
+            f"Error: --pr-title must start with a conventional commit prefix "
+            f"(e.g. fix:, feat:, chore:).\n  Got: {pr_title!r}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
     if not file_glob:
         print("Error: --file-glob is required.", file=sys.stderr)
         raise SystemExit(1)
@@ -226,7 +251,7 @@ def init(
     if not pr_body:
         pr_body = stuc_config.get("pr_body") or "Automated migration by stuc."
 
-    _validate_campaign(mode, file_glob, find, replace, prompt, search_term, context_file)
+    _validate_campaign(mode, file_glob, find, replace, prompt, search_term, context_file, commit_msg, pr_title)
 
     campaign = Campaign(
         name=name,
