@@ -185,6 +185,11 @@ def update_issue(issue_url: str, body: str) -> None:
     run(["issue", "edit", issue_url, "--body", body])
 
 
+def close_issue(issue_url: str) -> None:
+    """Close a GitHub issue."""
+    run(["issue", "close", issue_url])
+
+
 def file_exists(repo: str, path: str) -> bool:
     """Check if a file exists in a repo via the GitHub API."""
     result = _run_with_retry(["api", f"repos/{repo}/contents/{path}"], check=False)
