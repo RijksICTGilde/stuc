@@ -2,10 +2,8 @@
 
 from unittest.mock import patch
 
-import pytest
-
 from stuc.campaign import Campaign
-from stuc.issue import STUC_DATA_MARKER, format_issue_body
+from stuc.issue import format_issue_body
 from stuc.status import show_status
 
 
@@ -132,13 +130,23 @@ def test_status_all_lists_stuc_issues(mock_retry, mock_run):
     def retry_side_effect(args, **kwargs):
         cmd = " ".join(args)
         if "issue" in cmd and "list" in cmd:
-            return json.dumps([
-                {"number": 1, "title": "Campaign 1", "url": "https://github.com/Org/campaigns/issues/1", "author": {"login": "user"}, "body": issue_body},
-            ])
+            return json.dumps(
+                [
+                    {
+                        "number": 1,
+                        "title": "Campaign 1",
+                        "url": "https://github.com/Org/campaigns/issues/1",
+                        "author": {"login": "user"},
+                        "body": issue_body,
+                    },
+                ]
+            )
         if "pr" in cmd and "view" in cmd:
             return json.dumps({"state": "MERGED", "statusCheckRollup": [], "mergeStateStatus": "UNKNOWN"})
         if "issue" in cmd and "view" in cmd:
-            return json.dumps({"body": "<!-- stuc-status-start -->\n<!-- stuc-status-end -->", "title": "T", "number": 1, "url": "x"})
+            return json.dumps(
+                {"body": "<!-- stuc-status-start -->\n<!-- stuc-status-end -->", "title": "T", "number": 1, "url": "x"}
+            )
         return ""
 
     mock_retry.side_effect = retry_side_effect
@@ -169,13 +177,23 @@ def test_status_mine_filters_by_user(mock_retry, mock_run):
         if "issue" in cmd and "list" in cmd:
             assert "--author" in args
             assert "anneschuth" in args
-            return json.dumps([
-                {"number": 1, "title": "Campaign 1", "url": "https://github.com/Org/campaigns/issues/1", "author": {"login": "anneschuth"}, "body": issue_body},
-            ])
+            return json.dumps(
+                [
+                    {
+                        "number": 1,
+                        "title": "Campaign 1",
+                        "url": "https://github.com/Org/campaigns/issues/1",
+                        "author": {"login": "anneschuth"},
+                        "body": issue_body,
+                    },
+                ]
+            )
         if "pr" in cmd and "view" in cmd:
             return json.dumps({"state": "MERGED", "statusCheckRollup": [], "mergeStateStatus": "UNKNOWN"})
         if "issue" in cmd and "view" in cmd:
-            return json.dumps({"body": "<!-- stuc-status-start -->\n<!-- stuc-status-end -->", "title": "T", "number": 1, "url": "x"})
+            return json.dumps(
+                {"body": "<!-- stuc-status-start -->\n<!-- stuc-status-end -->", "title": "T", "number": 1, "url": "x"}
+            )
         return ""
 
     mock_retry.side_effect = retry_side_effect
