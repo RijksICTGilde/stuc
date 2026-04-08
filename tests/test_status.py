@@ -1,7 +1,6 @@
 """Tests for status module."""
 
-import json
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import patch
 
 from stuc.campaign import Campaign
 from stuc.status import show_status
