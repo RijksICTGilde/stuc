@@ -391,7 +391,9 @@ def status(
     name: Annotated[str | None, typer.Argument(help="Campaign name or GitHub issue URL")] = None,
     refresh: Annotated[bool, typer.Option("--refresh", help="Re-fetch PR status")] = False,
     auto_merge: Annotated[bool, typer.Option("--auto-merge", help="Enable auto-merge on passing PRs")] = False,
-    all_campaigns: Annotated[bool, typer.Option("--all", help="Show status for all open campaigns in issue_repo")] = False,
+    all_campaigns: Annotated[
+        bool, typer.Option("--all", help="Show status for all open campaigns in issue_repo")
+    ] = False,
     mine: Annotated[bool, typer.Option("--mine", help="Show status for my open campaigns in issue_repo")] = False,
 ) -> None:
     """Check PR state and CI status for all repos in a campaign."""
