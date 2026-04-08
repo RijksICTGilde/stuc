@@ -190,6 +190,34 @@ def close_issue(issue_url: str) -> None:
     run(["issue", "close", issue_url])
 
 
+def current_user() -> str:
+    """Get the login of the currently authenticated GitHub user."""
+    output = _run_with_retry(["api", "user", "--jq", ".login"])
+    return output.strip()
+
+
+def list_issues(repo: str, state: str = "open", author: str | None = None) -> list[dict]:
+    """List issues in a repo. Returns list of dicts with number, title, url, author, body."""
+    args = [
+        "issue",
+        "list",
+        "--repo",
+        repo,
+        "--state",
+        state,
+        "--json",
+        "number,title,url,author,body",
+        "--limit",
+        "100",
+    ]
+    if author:
+        args += ["--author", author]
+    output = _run_with_retry(args, check=False)
+    if not output:
+        return []
+    return json.loads(output)
+
+
 def file_exists(repo: str, path: str) -> bool:
     """Check if a file exists in a repo via the GitHub API."""
     result = _run_with_retry(["api", f"repos/{repo}/contents/{path}"], check=False)
