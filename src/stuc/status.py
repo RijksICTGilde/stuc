@@ -138,6 +138,16 @@ def show_status(campaign: Campaign, refresh: bool = False, auto_merge: bool = Fa
         except SystemExit:
             console.print("[yellow]Warning: could not update tracking issue.[/yellow]")
 
+    # Close tracking issue if all PRs are merged (or closed)
+    trackable = [r for r in status_rows if r["state"] not in ("-", "unknown")]
+    all_done = trackable and all(r["state"] in ("merged", "closed") for r in trackable)
+    if all_done and campaign.issue_url:
+        try:
+            gh.close_issue(campaign.issue_url)
+            console.print(f"[green]All PRs merged — closed tracking issue {campaign.issue_url}[/green]")
+        except SystemExit:
+            console.print("[yellow]Warning: could not close tracking issue.[/yellow]")
+
     # Summary
     summary_parts = []
     if counts.get("merged"):
