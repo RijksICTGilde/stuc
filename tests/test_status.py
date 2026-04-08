@@ -2,7 +2,10 @@
 
 from unittest.mock import patch
 
+import pytest
+
 from stuc.campaign import Campaign
+from stuc.issue import STUC_DATA_MARKER, format_issue_body
 from stuc.status import show_status
 
 
@@ -89,3 +92,106 @@ def test_skipped_prs_ignored_for_close_check(mock_gh):
     show_status(campaign, refresh=True)
 
     mock_gh.close_issue.assert_called_once()
+
+
+# --- Tests for --all / --mine via CLI status command ---
+
+
+def _make_issue_body():
+    """Build a realistic stuc issue body."""
+    campaign = _make_campaign(issue_url="")
+    return format_issue_body(campaign)
+
+
+def test_status_all_without_issue_repo_errors():
+    """--all without issue_repo configured should error."""
+    from typer.testing import CliRunner
+
+    from stuc.cli import app
+
+    runner = CliRunner()
+
+    with patch("stuc.config.get", return_value=""):
+        result = runner.invoke(app, ["status", "--all"])
+        assert result.exit_code != 0
+
+
+@patch("stuc.gh.run")
+@patch("stuc.gh._run_with_retry")
+def test_status_all_lists_stuc_issues(mock_retry, mock_run):
+    """--all should process all stuc issues from issue_repo."""
+    import json
+
+    from typer.testing import CliRunner
+
+    from stuc.cli import app
+
+    runner = CliRunner()
+    issue_body = _make_issue_body()
+
+    def retry_side_effect(args, **kwargs):
+        cmd = " ".join(args)
+        if "issue" in cmd and "list" in cmd:
+            return json.dumps([
+                {"number": 1, "title": "Campaign 1", "url": "https://github.com/Org/campaigns/issues/1", "author": {"login": "user"}, "body": issue_body},
+            ])
+        if "pr" in cmd and "view" in cmd:
+            return json.dumps({"state": "MERGED", "statusCheckRollup": [], "mergeStateStatus": "UNKNOWN"})
+        if "issue" in cmd and "view" in cmd:
+            return json.dumps({"body": "<!-- stuc-status-start -->\n<!-- stuc-status-end -->", "title": "T", "number": 1, "url": "x"})
+        return ""
+
+    mock_retry.side_effect = retry_side_effect
+    mock_run.return_value = ""
+
+    with patch("stuc.config.get", return_value="Org/campaigns"):
+        result = runner.invoke(app, ["status", "--all", "--refresh"])
+        assert result.exit_code == 0
+
+
+@patch("stuc.gh.run")
+@patch("stuc.gh._run_with_retry")
+def test_status_mine_filters_by_user(mock_retry, mock_run):
+    """--mine should pass current user as author filter."""
+    import json
+
+    from typer.testing import CliRunner
+
+    from stuc.cli import app
+
+    runner = CliRunner()
+    issue_body = _make_issue_body()
+
+    def retry_side_effect(args, **kwargs):
+        cmd = " ".join(args)
+        if "api" in cmd and "user" in cmd:
+            return "anneschuth"
+        if "issue" in cmd and "list" in cmd:
+            assert "--author" in args
+            assert "anneschuth" in args
+            return json.dumps([
+                {"number": 1, "title": "Campaign 1", "url": "https://github.com/Org/campaigns/issues/1", "author": {"login": "anneschuth"}, "body": issue_body},
+            ])
+        if "pr" in cmd and "view" in cmd:
+            return json.dumps({"state": "MERGED", "statusCheckRollup": [], "mergeStateStatus": "UNKNOWN"})
+        if "issue" in cmd and "view" in cmd:
+            return json.dumps({"body": "<!-- stuc-status-start -->\n<!-- stuc-status-end -->", "title": "T", "number": 1, "url": "x"})
+        return ""
+
+    mock_retry.side_effect = retry_side_effect
+    mock_run.return_value = ""
+
+    with patch("stuc.config.get", return_value="Org/campaigns"):
+        result = runner.invoke(app, ["status", "--mine", "--refresh"])
+        assert result.exit_code == 0
+
+
+def test_status_no_args_errors():
+    """status without name or flags should error."""
+    from typer.testing import CliRunner
+
+    from stuc.cli import app
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["status"])
+    assert result.exit_code != 0

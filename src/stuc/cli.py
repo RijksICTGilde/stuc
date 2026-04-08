@@ -388,14 +388,42 @@ def delete(
 
 @app.command()
 def status(
-    name: Annotated[str, typer.Argument(help="Campaign name or GitHub issue URL")],
+    name: Annotated[str | None, typer.Argument(help="Campaign name or GitHub issue URL")] = None,
     refresh: Annotated[bool, typer.Option("--refresh", help="Re-fetch PR status")] = False,
     auto_merge: Annotated[bool, typer.Option("--auto-merge", help="Enable auto-merge on passing PRs")] = False,
+    all_campaigns: Annotated[bool, typer.Option("--all", help="Show status for all open campaigns in issue_repo")] = False,
+    mine: Annotated[bool, typer.Option("--mine", help="Show status for my open campaigns in issue_repo")] = False,
 ) -> None:
     """Check PR state and CI status for all repos in a campaign."""
+    from stuc import config as stuc_config
     from stuc import gh
-    from stuc.issue import extract_campaign_from_issue, is_issue_url
+    from stuc.issue import STUC_DATA_MARKER, extract_campaign_from_issue, is_issue_url
     from stuc.status import show_status
+
+    if all_campaigns or mine:
+        issue_repo = stuc_config.get("issue_repo")
+        if not issue_repo:
+            print("Error: no issue_repo configured. Run: stuc config issue_repo <owner/repo>", file=sys.stderr)
+            raise SystemExit(1)
+
+        author = gh.current_user() if mine else None
+        issues = gh.list_issues(issue_repo, state="open", author=author)
+        stuc_issues = [i for i in issues if STUC_DATA_MARKER in (i.get("body") or "")]
+
+        if not stuc_issues:
+            label = "your" if mine else "any"
+            print(f"No open stuc campaigns found ({label}) in {issue_repo}.")
+            return
+
+        for issue in stuc_issues:
+            campaign = extract_campaign_from_issue(issue["body"])
+            campaign.issue_url = issue["url"]
+            show_status(campaign, refresh=refresh, auto_merge=auto_merge)
+        return
+
+    if name is None:
+        print("Error: provide a campaign name, issue URL, or use --all / --mine.", file=sys.stderr)
+        raise SystemExit(1)
 
     if is_issue_url(name):
         issue_data = gh.get_issue(name)
